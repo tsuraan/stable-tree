@@ -1,16 +1,16 @@
 -- |
--- Module    : Data.StableTree.IO.Ram
+-- Module    : Data.StableTree.Persist.Ram
 -- Copyright : Jeremy Groven
 -- License   : BSD3
 --
 -- A sample implementation of StableTree storage that just writes stuff to some
 -- Maps that are wrapped in IORefs.
-module Data.StableTree.IO.Ram
+module Data.StableTree.Persist.Ram
 ( RamError(..)
 , storage
 ) where
 
-import Data.StableTree.IO ( Id, Error(..), Store(..) )
+import Data.StableTree.Persist ( Id, Error(..), Store(..) )
 
 import qualified Data.Map as Map
 import Data.IORef ( IORef, newIORef, readIORef, modifyIORef )
@@ -26,7 +26,7 @@ instance Error RamError where
   stableTreeError = ApiError
 
 -- |Create a new RAM store
-storage :: IO ( Store RamError k v
+storage :: IO ( Store IO RamError k v
               , IORef (Map Id (Int,Map k Id))
               , IORef (Map Id v) )
 storage = do

@@ -6,9 +6,9 @@ module Main
 ( main
 ) where
 
-import Data.StableTree        ( fromMap )
-import Data.StableTree.IO     ( store )
-import Data.StableTree.IO.Ram ( storage )
+import Data.StableTree             ( fromMap )
+import Data.StableTree.Persist     ( store )
+import Data.StableTree.Persist.Ram ( storage )
 
 import qualified Data.Map as Map
 import Data.IORef ( readIORef )
@@ -17,14 +17,15 @@ import Data.IORef ( readIORef )
 -- out the total number of unique entries in that store and how many database
 -- entries would be required from a naive database implementation every
 -- so-often.
+main :: IO ()
 main = do
   (s, trees, values) <- storage
   mapM_ (doRun s trees values) [0,100..1000::Int]
-  store s (fromMap $ Map.fromList [(a,a+1)|a<-[100..1000]])
+  Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[100..1000]])
   prTrees trees values
-  store s (fromMap $ Map.fromList [(a,a+1)|a<-[200..1000]])
+  Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[200..1000]])
   prTrees trees values
-  store s (fromMap $ Map.fromList [(a,a+1)|a<-[0..400]++[600..1000]])
+  Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[0..400]++[600..1000]])
   prTrees trees values
 
   where

@@ -3,8 +3,8 @@ module Main
 ) where
 
 import qualified Data.StableTree as ST
-import Data.StableTree.IO ( store, load )
-import Data.StableTree.IO.Ram ( storage )
+import Data.StableTree.Persist ( store, load )
+import Data.StableTree.Persist.Ram ( storage )
 
 import qualified Data.Map as Map
 import Control.Arrow ( first )

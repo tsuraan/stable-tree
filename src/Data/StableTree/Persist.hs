@@ -1,20 +1,22 @@
 {-# LANGUAGE LambdaCase, OverloadedStrings #-}
 -- |
--- Module    : Data.StableTree.IO
+-- Module    : Data.StableTree.Persist
 -- Copyright : Jeremy Groven
 -- License   : BSD3
 --
--- Logic for dealing with the actual storage of Stable Trees. The key exports
--- here are 'Error', 'Store', 'load', and 'store'. A user needs to implement
--- the 'loadTree', 'loadValue', 'storeTree' and 'storeValue' parts of 'Store',
--- and make an appropriate Error type to report storage errors, and then the
--- 'load' and 'store' functions can just do their thing. If necessary, a user
--- can also implement 'Build' for custom data types.
-module Data.StableTree.IO
+-- Logic for dealing with the actual persistence of Stable Trees. The key
+-- exports here are 'Error', 'Store', 'load', and 'store'. A user needs to
+-- implement the 'loadTree', 'loadValue', 'storeTree' and 'storeValue' parts of
+-- 'Store', and make an appropriate Error type to report storage errors, and
+-- then the 'load' and 'store' functions can just do their thing. If necessary,
+-- a user can also implement 'Build' for custom data types.
+module Data.StableTree.Persist
 ( Store(..)
 , Build(..)
 , Error(..)
 , Id
+, encodeId
+, decodeId
 , load
 , store
 , buildBinary
@@ -34,7 +36,7 @@ import Blaze.ByteString.Builder.ByteString ( fromByteString, fromLazyByteString 
 import Blaze.ByteString.Builder.Char8      ( fromShow, fromString, fromChar )
 import Blaze.ByteString.Builder.Word       ( fromWord64be )
 import Control.Arrow                       ( second )
-import Control.Monad.Except                ( ExceptT, runExceptT, liftIO, throwError )
+import Control.Monad.Except                ( ExceptT, runExceptT, lift, throwError )
 import Crypto.Hash.Skein256                ( hash )
 import Data.ByteString                     ( ByteString )
 import Data.Int                            ( Int8, Int16, Int32, Int64 )
@@ -53,22 +55,38 @@ class Error e where
 -- |The opaque type to identify values and branches of trees.
 data Id = Id !Word64 !Word64 !Word64 !Word64 deriving ( Show, Eq, Ord )
 
+-- |Convert an Id into a 32-byte ByteString. Useful for actual storage of Ids
+encodeId :: Id -> ByteString
+encodeId = toByteString . build
+
+-- |Convert a stored ByteString back into an Id. Gives a "Left err" if the
+-- given ByteString isn't 32 bytes long
+decodeId :: ByteString -> Either String Id
+decodeId = runGet decode
+  where
+  decode = do
+    a <- getWord64be
+    b <- getWord64be
+    c <- getWord64be
+    d <- getWord64be
+    return $ Id a b c d
+
 -- |Write appropriate functions here to load and store primitive parts of
 -- trees.
-data Store e k v = Store
-  { loadTree   :: Id -> IO (Either e (Int, Map k Id))
-  , loadValue  :: Id -> IO (Either e v)
-  , storeTree  :: Id -> Int -> Map k Id -> IO (Maybe e)
-  , storeValue :: Id -> v -> IO (Maybe e)
+data Store m e k v = Store
+  { loadTree   :: Id -> m (Either e (Int, Map k Id))
+  , loadValue  :: Id -> m (Either e v)
+  , storeTree  :: Id -> Int -> Map k Id -> m (Maybe e)
+  , storeValue :: Id -> v -> m (Maybe e)
   }
 
 -- |Retrieve a tree given its id.
-load :: (IsKey k, Ord k, Error e) => Store e k v -> Id -> IO (Either e (StableTree k v))
+load :: (Monad m, IsKey k, Ord k, Error e) => Store m e k v -> Id -> m (Either e (StableTree k v))
 load s i = runExceptT $ load' s i
 
-load' :: (IsKey k, Ord k, Error e) => Store e k v -> Id -> ExceptT e IO (StableTree k v)
+load' :: (Monad m, IsKey k, Ord k, Error e) => Store m e k v -> Id -> ExceptT e m (StableTree k v)
 load' storage treeId =
-  liftEitherIO (loadTree storage treeId) >>= \case
+  liftEither (loadTree storage treeId) >>= \case
     (0, contents)     -> loadBottom contents
     (depth, contents) -> loadBranch depth contents
   where
@@ -85,7 +103,7 @@ load' storage treeId =
     case Map.minViewWithKey cont of
       Nothing -> return accum
       Just ((k,valId),rest) -> do
-        v <- liftEitherIO $ loadValue storage valId
+        v <- liftEither $ loadValue storage valId
         loadValues rest $ Map.insert k v accum
 
   loadBranch depth contents = do
@@ -127,17 +145,17 @@ load' storage treeId =
   err = throwError . stableTreeError
 
 -- |Store a tree using a 'Store' and return its calculated 'Id'
-store :: (Build k, Ord k, Build v)
-      => Store e k v
+store :: (Monad m, Build k, Ord k, Build v)
+      => Store m e k v
       -> StableTree k v
-      -> IO (Either e Id)
+      -> m (Either e Id)
 store storage (StableTree_I i) = runExceptT $ store' storage i
 store storage (StableTree_C c) = runExceptT $ store' storage c
 
-store' :: (Build k, Ord k, Build v)
-       => Store e k v
+store' :: (Monad m, Build k, Ord k, Build v)
+       => Store m e k v
        -> Tree c k v
-       -> ExceptT e IO Id
+       -> ExceptT e m Id
 store' storage tree =
   case branchContents tree of
     Left subtrees -> storeBranch subtrees
@@ -168,13 +186,13 @@ store' storage tree =
       Nothing -> return accum
       Just ((k,v), rest) -> do
         let valId = calcId $ build v
-        _ <- liftMaybeIO $ storeValue storage valId v
+        _ <- liftMaybe $ storeValue storage valId v
         storeValues rest $ Map.insert k valId accum
 
   storeKeyIds key_ids =
     let depth = getDepth tree
         valId = treeHash depth key_ids
-    in do liftMaybeIO $ storeTree storage valId depth key_ids
+    in do liftMaybe $ storeTree storage valId depth key_ids
           return valId
 
 treeHash :: Build k => Int -> Map k Id -> Id
@@ -191,29 +209,22 @@ treeHash depth contents =
   len = fromShow . BS.length . toByteString
 
 calcId :: Builder -> Id
-calcId = right . runGet get . hash 256 . toByteString
+calcId = right . decodeId . hash 256 . toByteString
   where
   right ei =
     case ei of
       Left _ -> error "Got a left!?"
       Right v -> v
 
-  get = do
-    a <- getWord64be
-    b <- getWord64be
-    c <- getWord64be
-    d <- getWord64be
-    return $ Id a b c d
-
-liftEitherIO :: IO (Either a b) -> ExceptT a IO b
-liftEitherIO act =
-  liftIO act >>= \case
+liftEither :: Monad m => m (Either a b) -> ExceptT a m b
+liftEither act =
+  lift act >>= \case
     Left err -> throwError err
     Right val -> return val
 
-liftMaybeIO :: IO (Maybe e) -> ExceptT e IO ()
-liftMaybeIO act =
-  liftIO act >>= \case
+liftMaybe :: Monad m => m (Maybe e) -> ExceptT e m ()
+liftMaybe act =
+  lift act >>= \case
     Just err -> throwError err
     Nothing -> return ()
 
