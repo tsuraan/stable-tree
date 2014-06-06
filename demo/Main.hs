@@ -19,27 +19,31 @@ import Data.IORef ( readIORef )
 -- so-often.
 main = do
   (s, trees, values) <- storage
-  mapM_ (doRun s trees) [0,100..1000::Int]
+  mapM_ (doRun s trees values) [0,100..1000::Int]
   store s (fromMap $ Map.fromList [(a,a+1)|a<-[100..1000]])
-  prTrees trees
+  prTrees trees values
   store s (fromMap $ Map.fromList [(a,a+1)|a<-[200..1000]])
-  prTrees trees
+  prTrees trees values
   store s (fromMap $ Map.fromList [(a,a+1)|a<-[0..400]++[600..1000]])
-  prTrees trees
+  prTrees trees values
 
   where
-  doRun s trees i = do
+  doRun s trees values i = do
     mapM_ (upd s) [i..i+100]
     putStr $ stupidCount (i+100) ++ " "
-    prTrees trees
+    prTrees trees values
 
   upd s i = do
     let m = Map.fromList [(a,a+1) | a <- [0..i]]
         t = fromMap m
     store s t
 
-  prTrees trees = 
-    readIORef trees >>= return . length . Map.keys >>= print
+  prTrees trees values = do
+    tnum <- readIORef trees >>= return . Map.size
+    tsum <- readIORef trees >>= return . sum . map (Map.size . snd) . Map.elems
+    vsum <- readIORef values >>= return . Map.size
+    putStrLn $ show (tsum+vsum) ++ " (" ++ show tnum ++ "," ++ show tsum
+               ++ "," ++ show vsum ++ ")"
 
 -- |The typical way of storing key/value maps in SQL is to use a relational
 -- table, like this:
