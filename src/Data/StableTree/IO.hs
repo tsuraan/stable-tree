@@ -35,7 +35,7 @@ import Blaze.ByteString.Builder.Char8      ( fromShow, fromString, fromChar )
 import Blaze.ByteString.Builder.Word       ( fromWord64be )
 import Control.Arrow                       ( second )
 import Control.Monad.Except                ( ExceptT, runExceptT, liftIO, throwError )
-import Crypto.Hash.Tsuraan.Blake2          ( hash )
+import Crypto.Hash.Skein256                ( hash )
 import Data.ByteString                     ( ByteString )
 import Data.Int                            ( Int8, Int16, Int32, Int64 )
 import Data.Map                            ( Map )
@@ -191,7 +191,7 @@ treeHash depth contents =
   len = fromShow . BS.length . toByteString
 
 calcId :: Builder -> Id
-calcId = right . runGet get . hash 32 . toByteString
+calcId = right . runGet get . hash 256 . toByteString
   where
   right ei =
     case ei of

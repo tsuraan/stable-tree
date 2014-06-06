@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                stable-tree
-version:             0.0.2
+version:             0.1.0
 synopsis:            Trees whose branches are resistant to change
 -- description:         
 homepage:            https://github.com/tsuraan/stable-tree
@@ -38,7 +38,7 @@ library
                      , bytestring
                      , cereal
                      , containers
-                     , hs-blake2
+                     , cryptohash >= 0.5.1
                      , mtl >= 2.2.1
                      , text
   hs-source-dirs:      src
