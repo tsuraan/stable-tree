@@ -20,6 +20,8 @@ module Data.StableTree.Types
 , getKey
 , completeKey
 , treeContents
+, branchContents
+, getDepth
 ) where
 
 import Data.StableTree.Types.Key
@@ -236,6 +238,7 @@ treeContents t =
       Map.unions $ treeContents iv:map treeContents (Map.elems completes)
     Right x -> x
 
+-- |Get the number of levels of branches that live below this one
 getDepth :: Tree c k v -> Int
 getDepth (Bottom _ _ _ _)     = 0
 getDepth (Branch d _ _ _ _)   = d
@@ -245,6 +248,9 @@ getDepth (IBranch0 d _)       = d
 getDepth (IBranch1 d _ _)     = d
 getDepth (IBranch2 d _ _ _ _) = d
 
+-- |Non-recursive function to simply get the immediate children of the given
+-- branch. This will either give the key/value map of a Bottom, or the key/tree
+-- map of a non-bottom branch.
 branchContents :: Ord k
                => Tree c k v
                -> Either ( Map k (Tree Complete k v)

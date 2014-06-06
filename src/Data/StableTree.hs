@@ -18,7 +18,7 @@
 -- various implementations of this for way too long, and I just want to start
 -- using the dang thing now.
 module Data.StableTree
-( StableTree
+( StableTree(..)
 , IsKey(..)
 , fromMap
 , toMap

@@ -1,3 +1,13 @@
+-- |
+-- Module    : Data.StableTree.Types.Key
+-- Copyright : Jeremy Groven
+-- License   : BSD3
+--
+-- Tools for working with StableTree keys. Just about anything can be a key, so
+-- long as there's a sane way to implement IsKey and the standard Ord class.
+--
+-- Typical users don't need to worry about anything here other than perhaps
+-- IsKey.
 module Data.StableTree.Types.Key
 ( IsKey(..)
 , Key(fromKey)
