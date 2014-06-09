@@ -74,21 +74,27 @@ decodeId = runGet decode
 -- |Write appropriate functions here to load and store primitive parts of
 -- trees.
 data Store m e k v = Store
-  { loadTree   :: Id -> m (Either e (Int, Map k Id))
+  { loadTree   :: Id -> m (Either e (Depth, ValueCount, Map k Id))
   , loadValue  :: Id -> m (Either e v)
-  , storeTree  :: Id -> Int -> Map k Id -> m (Maybe e)
+  , storeTree  :: Id -> Depth -> ValueCount -> Map k Id -> m (Maybe e)
   , storeValue :: Id -> v -> m (Maybe e)
   }
 
 -- |Retrieve a tree given its id.
-load :: (Monad m, IsKey k, Ord k, Error e) => Store m e k v -> Id -> m (Either e (StableTree k v))
+load :: (Monad m, IsKey k, Ord k, Error e)
+     => Store m e k v
+     -> Id
+     -> m (Either e (StableTree k v))
 load s i = runExceptT $ load' s i
 
-load' :: (Monad m, IsKey k, Ord k, Error e) => Store m e k v -> Id -> ExceptT e m (StableTree k v)
+load' :: (Monad m, IsKey k, Ord k, Error e)
+      => Store m e k v
+      -> Id
+      -> ExceptT e m (StableTree k v)
 load' storage treeId =
   liftEither (loadTree storage treeId) >>= \case
-    (0, contents)     -> loadBottom contents
-    (depth, contents) -> loadBranch depth contents
+    (0, _, contents)     -> loadBottom contents
+    (depth, _, contents) -> loadBranch depth contents
   where
   loadBottom contents = do
     vals <- loadValues contents Map.empty
@@ -191,8 +197,9 @@ store' storage tree =
 
   storeKeyIds key_ids =
     let depth = getDepth tree
+        vcount = getValueCount tree
         valId = treeHash depth key_ids
-    in do liftMaybe $ storeTree storage valId depth key_ids
+    in do liftMaybe $ storeTree storage valId depth vcount key_ids
           return valId
 
 treeHash :: Build k => Int -> Map k Id -> Id

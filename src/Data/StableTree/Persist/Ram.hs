@@ -18,7 +18,8 @@ import Data.Map   ( Map )
 import Data.Text  ( Text )
 
 -- |Error type for RAM storage. Not a lot can go wrong in RAM...
-data RamError = NoKey
+data RamError = NoTree Id
+              | NoVal Id
               | ApiError Text
               deriving ( Show )
 
@@ -27,7 +28,7 @@ instance Error RamError where
 
 -- |Create a new RAM store
 storage :: IO ( Store IO RamError k v
-              , IORef (Map Id (Int,Map k Id))
+              , IORef (Map Id (Int,Int,Map k Id))
               , IORef (Map Id v) )
 storage = do
   trees  <- newIORef Map.empty
@@ -39,20 +40,21 @@ storage = do
   lt store tid = do
     m <- readIORef store
     case Map.lookup tid m of
-      Nothing -> return $ Left NoKey
-      Just pair -> return $ Right pair
+      Nothing -> return $ Left $ NoTree tid
+      Just tup -> return $ Right tup
 
   lv store vid = do
     m <- readIORef store
     case Map.lookup vid m of
-      Nothing -> return $ Left NoKey
+      Nothing -> return $ Left $ NoVal vid
       Just v -> return $ Right v
 
-  st store tid depth tree = do
-    modifyIORef store $ Map.insert tid (depth,tree)
+  st store tid depth vcount tree = do
+    modifyIORef store $ Map.insert tid (depth,vcount,tree)
     return Nothing
 
   sv store vid val = do
+    -- putStrLn $ "Storing " ++ show vid
     modifyIORef store $ Map.insert vid val
     return Nothing
 

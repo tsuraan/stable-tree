@@ -41,10 +41,12 @@ main = do
 
   prTrees trees values = do
     tnum <- readIORef trees >>= return . Map.size
-    tsum <- readIORef trees >>= return . sum . map (Map.size . snd) . Map.elems
+    tsum <- readIORef trees >>= return . sum . map (Map.size . third) . Map.elems
     vsum <- readIORef values >>= return . Map.size
     putStrLn $ show (tsum+vsum) ++ " (" ++ show tnum ++ "," ++ show tsum
                ++ "," ++ show vsum ++ ")"
+
+  third (_,_,x) = x
 
 -- |The typical way of storing key/value maps in SQL is to use a relational
 -- table, like this:
