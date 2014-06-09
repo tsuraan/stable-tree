@@ -198,11 +198,16 @@ nextBranch branches mIncomplete =
     let popd = Map.minViewWithKey remain >>= return . first wrapKey
     in case popd of
       Nothing ->
-        let vcount = 2 + sum (map getValueCount $ Map.elems accum)
-                       + maybe 0 (getValueCount . snd) mIncomplete
+        let vcount = (getValueCount . snd) f1
+                   + (getValueCount . snd) f2
+                   + sum (map getValueCount $ Map.elems accum)
+                   + maybe 0 (getValueCount . snd) mIncomplete
         in Left $ IBranch2 depth vcount f1 f2 accum $ wrapMKey mIncomplete
       Just ((SomeKey_T term,v), remain') ->
-        let vcount = 3 + sum (map getValueCount $ Map.elems accum)
+        let vcount = (getValueCount . snd) f1
+                   + (getValueCount . snd) f2
+                   + sum (map getValueCount $ Map.elems accum)
+                   + getValueCount v
         in Right ( Branch depth vcount f1 f2 accum (term, v), remain' )
       Just ((SomeKey_N nonterm,v), remain') ->
         go f1 f2 (Map.insert nonterm v accum) remain'
