@@ -74,7 +74,7 @@ decodeId = runGet decode
 -- |Write appropriate functions here to load and store primitive parts of
 -- trees.
 data Store m e k v = Store
-  { loadTree   :: Id -> m (Either e (Depth, Map k Id))
+  { loadTree   :: Id -> m (Either e (Depth, Map k (ValueCount, Id)))
   , loadValue  :: Id -> m (Either e v)
   , storeTree  :: Id -> Depth -> Map k (ValueCount, Id) -> m (Maybe e)
   , storeValue :: Id -> v -> m (Maybe e)
@@ -108,7 +108,7 @@ load' storage treeId =
   loadValues cont accum =
     case Map.minViewWithKey cont of
       Nothing -> return accum
-      Just ((k,valId),rest) -> do
+      Just ((k,(_,valId)),rest) -> do
         v <- liftEither $ loadValue storage valId
         loadValues rest $ Map.insert k v accum
 
@@ -144,7 +144,7 @@ load' storage treeId =
   loadChildren cont accum =
     case Map.minViewWithKey cont of
       Nothing -> return accum
-      Just ((k,valId),rest) -> do
+      Just ((k,(_,valId)),rest) -> do
         subtree <- load' storage valId
         loadChildren rest $ Map.insert k subtree accum
 

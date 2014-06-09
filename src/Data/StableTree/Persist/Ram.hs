@@ -42,7 +42,7 @@ storage = do
     case Map.lookup tid m of
       Nothing -> return $ Left $ NoTree tid
       Just (depth, children) ->
-        return $ Right (depth, Map.map snd children)
+        return $ Right (depth, children)
 
   lv store vid = do
     m <- readIORef store
