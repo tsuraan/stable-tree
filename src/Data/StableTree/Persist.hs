@@ -74,9 +74,9 @@ decodeId = runGet decode
 -- |Write appropriate functions here to load and store primitive parts of
 -- trees.
 data Store m e k v = Store
-  { loadTree   :: Id -> m (Either e (Depth, ValueCount, Map k Id))
+  { loadTree   :: Id -> m (Either e (Depth, Map k Id))
   , loadValue  :: Id -> m (Either e v)
-  , storeTree  :: Id -> Depth -> ValueCount -> Map k Id -> m (Maybe e)
+  , storeTree  :: Id -> Depth -> Map k (ValueCount, Id) -> m (Maybe e)
   , storeValue :: Id -> v -> m (Maybe e)
   }
 
@@ -93,8 +93,8 @@ load' :: (Monad m, IsKey k, Ord k, Error e)
       -> ExceptT e m (StableTree k v)
 load' storage treeId =
   liftEither (loadTree storage treeId) >>= \case
-    (0, _, contents)     -> loadBottom contents
-    (depth, _, contents) -> loadBranch depth contents
+    (0, contents)     -> loadBottom contents
+    (depth, contents) -> loadBranch depth contents
   where
   loadBottom contents = do
     vals <- loadValues contents Map.empty
@@ -172,16 +172,16 @@ store' storage tree =
     key_ids <- storeSubtrees complete Map.empty
     case mIncomplete of
       Nothing -> storeKeyIds key_ids
-      Just (k,v) -> do
+      Just (k,c,v) -> do
         treeId <- store' storage v
-        storeKeyIds $ Map.insert k treeId key_ids
+        storeKeyIds $ Map.insert k (c,treeId) key_ids
 
   storeSubtrees kvmap accum =
     case Map.minViewWithKey kvmap of
       Nothing -> return accum
-      Just ((k,t), rest) -> do
+      Just ((k,(c,t)), rest) -> do
         treeId <- store' storage t
-        storeSubtrees rest $ Map.insert k treeId accum
+        storeSubtrees rest $ Map.insert k (c,treeId) accum
 
   storeBottom kvmap = do
     key_ids <- storeValues kvmap Map.empty
@@ -193,13 +193,12 @@ store' storage tree =
       Just ((k,v), rest) -> do
         let valId = calcId $ build v
         _ <- liftMaybe $ storeValue storage valId v
-        storeValues rest $ Map.insert k valId accum
+        storeValues rest $ Map.insert k (1,valId) accum
 
   storeKeyIds key_ids =
     let depth = getDepth tree
-        vcount = getValueCount tree
-        valId = treeHash depth key_ids
-    in do liftMaybe $ storeTree storage valId depth vcount key_ids
+        valId = treeHash depth $ Map.map snd key_ids
+    in do liftMaybe $ storeTree storage valId depth key_ids
           return valId
 
 treeHash :: Build k => Int -> Map k Id -> Id

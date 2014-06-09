@@ -28,7 +28,7 @@ instance Error RamError where
 
 -- |Create a new RAM store
 storage :: IO ( Store IO RamError k v
-              , IORef (Map Id (Int,Int,Map k Id))
+              , IORef (Map Id (Int,Map k (Int,Id)))
               , IORef (Map Id v) )
 storage = do
   trees  <- newIORef Map.empty
@@ -41,7 +41,8 @@ storage = do
     m <- readIORef store
     case Map.lookup tid m of
       Nothing -> return $ Left $ NoTree tid
-      Just tup -> return $ Right tup
+      Just (depth, children) ->
+        return $ Right (depth, Map.map snd children)
 
   lv store vid = do
     m <- readIORef store
@@ -49,8 +50,8 @@ storage = do
       Nothing -> return $ Left $ NoVal vid
       Just v -> return $ Right v
 
-  st store tid depth vcount tree = do
-    modifyIORef store $ Map.insert tid (depth,vcount,tree)
+  st store tid depth tree = do
+    modifyIORef store $ Map.insert tid (depth,tree)
     return Nothing
 
   sv store vid val = do

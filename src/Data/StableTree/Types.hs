@@ -104,11 +104,10 @@ data Tree c k v where
          -> Tree Complete k v
 
   Branch :: Depth
-         -> ValueCount
-         -> (SomeKey k, Tree Complete k v)
-         -> (SomeKey k, Tree Complete k v)
-         -> Map (Key Nonterminal k) (Tree Complete k v)
-         -> (Key Terminal k, Tree Complete k v)
+         -> (SomeKey k, ValueCount, Tree Complete k v)
+         -> (SomeKey k, ValueCount, Tree Complete k v)
+         -> Map (Key Nonterminal k) (ValueCount, Tree Complete k v)
+         -> (Key Terminal k, ValueCount, Tree Complete k v)
          -> Tree Complete k v
 
   -- Either an empty or a singleton tree
@@ -123,24 +122,21 @@ data Tree c k v where
 
   -- A strut to lift an incomplete tree to the next level up
   IBranch0 :: Depth
-           -> ValueCount
-           -> (SomeKey k, Tree Incomplete k v)
+           -> (SomeKey k, ValueCount, Tree Incomplete k v)
            -> Tree Incomplete k v
 
   -- A joining of a single complete and maybe an incomplete
   IBranch1 :: Depth
-           -> ValueCount
-           -> (SomeKey k, Tree Complete k v)
-           -> Maybe (SomeKey k, Tree Incomplete k v)
+           -> (SomeKey k, ValueCount, Tree Complete k v)
+           -> Maybe (SomeKey k, ValueCount, Tree Incomplete k v)
            -> Tree Incomplete k v
 
   -- A branch that doesn't have a terminal, and that might have an IBranch
   IBranch2 :: Depth
-           -> ValueCount
-           -> (SomeKey k, Tree Complete k v)
-           -> (SomeKey k, Tree Complete k v)
-           -> Map (Key Nonterminal k) (Tree Complete k v)
-           -> Maybe (SomeKey k, Tree Incomplete k v)
+           -> (SomeKey k, ValueCount, Tree Complete k v)
+           -> (SomeKey k, ValueCount, Tree Complete k v)
+           -> Map (Key Nonterminal k) (ValueCount, Tree Complete k v)
+           -> Maybe (SomeKey k, ValueCount, Tree Incomplete k v)
            -> Tree Incomplete k v
 
 -- |Wrap up some of a k/v map into a 'Tree'. A 'Right' result gives a complete
@@ -186,10 +182,9 @@ nextBranch branches mIncomplete =
     Nothing -> 
       case mIncomplete of
         Nothing       -> Left $ IBottom0 Nothing
-        Just (ik, iv) -> Left $ IBranch0 depth (getValueCount iv) (wrap ik, iv)
+        Just (ik, iv) -> Left $ IBranch0 depth (wrap ik, getValueCount iv, iv)
     Just ((k,v), Nothing) ->
-      let vcount = getValueCount v + maybe 0 (getValueCount . snd) mIncomplete
-      in Left $ IBranch1 depth vcount (wrap k,v) $ wrapMKey mIncomplete
+      Left $ IBranch1 depth (wrap k, getValueCount v, v) $ wrapMKey mIncomplete
     Just (f1, Just (f2, remain)) ->
       go (wrapKey f1) (wrapKey f2) Map.empty remain
 
@@ -198,24 +193,14 @@ nextBranch branches mIncomplete =
     let popd = Map.minViewWithKey remain >>= return . first wrapKey
     in case popd of
       Nothing ->
-        let vcount = (getValueCount . snd) f1
-                   + (getValueCount . snd) f2
-                   + sum (map getValueCount $ Map.elems accum)
-                   + maybe 0 (getValueCount . snd) mIncomplete
-        in Left $ IBranch2 depth vcount f1 f2 accum $ wrapMKey mIncomplete
-      Just ((SomeKey_T term,v), remain') ->
-        let vcount = (getValueCount . snd) f1
-                   + (getValueCount . snd) f2
-                   + sum (map getValueCount $ Map.elems accum)
-                   + getValueCount v
-        in Right ( Branch depth vcount f1 f2 accum (term, v), remain' )
-      Just ((SomeKey_N nonterm,v), remain') ->
-        go f1 f2 (Map.insert nonterm v accum) remain'
+        Left $ IBranch2 depth f1 f2 accum $ wrapMKey mIncomplete
+      Just ((SomeKey_T term,c,v), remain') ->
+        Right ( Branch depth f1 f2 accum (term, c, v), remain' )
+      Just ((SomeKey_N nonterm,c,v), remain') ->
+        go f1 f2 (Map.insert nonterm (c,v) accum) remain'
 
-  wrapKey :: IsKey k => (k,v) -> (SomeKey k, v)
-  wrapKey = first wrap
+  wrapKey (k,v) = (wrap k, getValueCount v, v)
 
-  wrapMKey :: IsKey k => Maybe (k,v) -> Maybe (SomeKey k, v)
   wrapMKey = (>>=return . wrapKey)
 
   depth = case Map.elems branches of
@@ -236,58 +221,65 @@ nextBranch branches mIncomplete =
 -- returns Nothing.
 getKey :: Tree c k v -> Maybe k
 getKey (Bottom (k,_) _ _ _)       = Just $ unwrap k
-getKey (Branch _ _ (k,_) _ _ _)   = Just $ unwrap k
 getKey (IBottom0 Nothing)         = Nothing
 getKey (IBottom0 (Just (k,_)))    = Just $ unwrap k
 getKey (IBottom1 (k,_) _ _)       = Just $ unwrap k
-getKey (IBranch0 _ _ (k,_))       = Just $ unwrap k
-getKey (IBranch1 _ _ (k,_) _)     = Just $ unwrap k
-getKey (IBranch2 _ _ (k,_) _ _ _) = Just $ unwrap k
+getKey (Branch _ (k,_,_) _ _ _)   = Just $ unwrap k
+getKey (IBranch0 _ (k,_,_))       = Just $ unwrap k
+getKey (IBranch1 _ (k,_,_) _)     = Just $ unwrap k
+getKey (IBranch2 _ (k,_,_) _ _ _) = Just $ unwrap k
 
 -- |Get the key of the fist entry in this complete branch. This function is
 -- total.
 completeKey :: Tree Complete k v -> k
 completeKey (Bottom (k,_) _ _ _)     = unwrap k
-completeKey (Branch _ _ (k,_) _ _ _)   = unwrap k
+completeKey (Branch _ (k,_,_) _ _ _)   = unwrap k
 
 -- |Convert an entire Tree into a k/v map.
 treeContents :: Ord k => Tree c k v -> Map k v
 treeContents t =
   case branchContents t of
     Left ( completes, Nothing) ->
-      Map.unions $ map treeContents $ Map.elems completes
-    Left ( completes, Just (_k, iv)) ->
-      Map.unions $ treeContents iv:map treeContents (Map.elems completes)
+      Map.unions $ map (treeContents . snd) $ Map.elems completes
+    Left ( completes, Just (_k, _c, iv)) ->
+      Map.unions $ treeContents iv:map (treeContents . snd) (Map.elems completes)
     Right x -> x
 
 -- |Get the number of levels of branches that live below this one
 getDepth :: Tree c k v -> Depth
 getDepth (Bottom _ _ _ _)       = 0
-getDepth (Branch d _ _ _ _ _)   = d
+getDepth (Branch d _ _ _ _)   = d
 getDepth (IBottom0 _)           = 0
 getDepth (IBottom1 _ _ _)       = 0
-getDepth (IBranch0 d _ _)       = d
-getDepth (IBranch1 d _ _ _)     = d
-getDepth (IBranch2 d _ _ _ _ _) = d
+getDepth (IBranch0 d _)       = d
+getDepth (IBranch1 d _ _)     = d
+getDepth (IBranch2 d _ _ _ _) = d
 
 -- |Get the number of actual values that live below this branch
 getValueCount :: Tree c k v -> ValueCount
-getValueCount (Bottom _ _ m _)       = 3 + Map.size m
-getValueCount (Branch _ c _ _ _ _)   = c
+getValueCount (Bottom _ _ m _) = 3 + Map.size m
 getValueCount (IBottom0 Nothing)     = 0
 getValueCount (IBottom0 _)           = 1
 getValueCount (IBottom1 _ _ m)       = 2 + Map.size m
-getValueCount (IBranch0 _ c _)       = c
-getValueCount (IBranch1 _ c _ _)     = c
-getValueCount (IBranch2 _ c _ _ _ _) = c
+
+getValueCount (Branch _ (_,c1,_) (_,c2,_) nterm (_,c3,_)) =
+  c1 + c2 + c3 + sum (map fst $ Map.elems nterm)
+getValueCount (IBranch0 _ (_,c,_)) =
+  c
+getValueCount (IBranch1 _ (_,c,_) Nothing) =
+  c
+getValueCount (IBranch1 _ (_,c1,_) (Just (_,c2,_))) =
+  c1+c2
+getValueCount (IBranch2 _ (_,c1,_) (_,c2,_) m i) =
+  c1 + c2 + sum (map fst $ Map.elems m) + maybe 0 (\(_,c3,_)->c3) i
 
 -- |Non-recursive function to simply get the immediate children of the given
 -- branch. This will either give the key/value map of a Bottom, or the key/tree
 -- map of a non-bottom branch.
 branchContents :: Ord k
                => Tree c k v
-               -> Either ( Map k (Tree Complete k v)
-                         , Maybe (k, Tree Incomplete k v))
+               -> Either ( Map k (ValueCount, Tree Complete k v)
+                         , Maybe (k, ValueCount, Tree Incomplete k v))
                          ( Map k v )
 branchContents (Bottom (k1,v1) (k2,v2) terms (kt,vt)) =
   let terms' = Map.mapKeys fromKey terms
@@ -296,11 +288,11 @@ branchContents (Bottom (k1,v1) (k2,v2) terms (kt,vt)) =
              $ Map.insert (fromKey kt) vt
              terms'
   in Right conts
-branchContents (Branch _d _c (k1,v1) (k2,v2) terms (kt,vt)) =
+branchContents (Branch _d (k1,c1,v1) (k2,c2,v2) terms (kt,ct,vt)) =
   let terms' = Map.mapKeys fromKey terms
-      conts  = Map.insert (unwrap k1) v1
-             $ Map.insert (unwrap k2) v2
-             $ Map.insert (fromKey kt) vt
+      conts  = Map.insert (unwrap k1) (c1,v1)
+             $ Map.insert (unwrap k2) (c2,v2)
+             $ Map.insert (fromKey kt) (ct,vt)
              terms'
   in Left (conts, Nothing)
 branchContents (IBottom0 Nothing) =
@@ -313,25 +305,26 @@ branchContents (IBottom1 (k1,v1) (k2,v2) terms) =
              $ Map.insert (unwrap k2) v2
              terms'
   in Right conts
-branchContents (IBranch0 _d _c incomplete) =
-  Left (Map.empty, Just $ first unwrap incomplete)
-branchContents (IBranch1 _d _c (k1,v1) mIncomplete) =
-  Left (Map.singleton (unwrap k1) v1, mIncomplete >>= return . first unwrap)
-branchContents (IBranch2 _d _c (k1,v1) (k2,v2) terms mIncomplete) =
+branchContents (IBranch0 _d (ik,ic,iv)) =
+  Left (Map.empty, Just (unwrap ik, ic, iv))
+branchContents (IBranch1 _d (k1,c1,v1) mIncomplete) =
+  Left ( Map.singleton (unwrap k1) (c1,v1)
+       , mIncomplete >>= (\(k,c,v) -> return (unwrap k,c,v)))
+branchContents (IBranch2 _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
   let terms' = Map.mapKeys fromKey terms
-      conts  = Map.insert (unwrap k1) v1
-             $ Map.insert (unwrap k2) v2
+      conts  = Map.insert (unwrap k1) (c1,v1)
+             $ Map.insert (unwrap k2) (c2,v2)
              terms'
-  in Left (conts, mIncomplete >>= return . first unwrap)
+  in Left (conts, mIncomplete >>= \(k,c,v) -> return (unwrap k, c, v))
 
 instance (Ord k, Show k, Show v) => Show (Tree c k v) where
   show t@(Bottom _ _ _ _)       = branchShow "Bottom" t
-  show t@(Branch _ _ _ _ _ _)   = branchShow "Branch" t
+  show t@(Branch _ _ _ _ _)   = branchShow "Branch" t
   show t@(IBottom0 _)           = branchShow "IBottom" t
   show t@(IBottom1 _ _ _)       = branchShow "IBottom" t
-  show t@(IBranch0 _ _ _)       = branchShow "IBranch" t
-  show t@(IBranch1 _ _ _ _)     = branchShow "IBranch" t
-  show t@(IBranch2 _ _ _ _ _ _) = branchShow "IBranch" t
+  show t@(IBranch0 _ _)       = branchShow "IBranch" t
+  show t@(IBranch1 _ _ _)     = branchShow "IBranch" t
+  show t@(IBranch2 _ _ _ _ _) = branchShow "IBranch" t
 
 branchShow :: (Ord k, Show k, Show v) => String -> Tree c k v -> String
 branchShow header t =
@@ -340,7 +333,7 @@ branchShow header t =
       let strs = [show k ++ " => " ++ show v | (k, v) <- Map.toAscList ts]
           str  = intercalate ", " strs
       in header ++ "(" ++ show (getDepth t) ++ ")<" ++ str ++ ">"
-    Left (ts, Just (ik, iv)) ->
+    Left (ts, Just (ik, _ic, iv)) ->
       let strs = [ show k ++ " => " ++ show v | (k, v) <- Map.toAscList ts
                  ] ++ [show ik ++ " => " ++ show iv]
           str  = intercalate ", " strs
