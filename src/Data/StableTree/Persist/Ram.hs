@@ -10,16 +10,17 @@ module Data.StableTree.Persist.Ram
 , storage
 ) where
 
-import Data.StableTree.Persist ( Id, Error(..), Store(..) )
+import Data.StableTree.Persist ( Error(..), Store(..) )
 
 import qualified Data.Map as Map
 import Data.IORef ( IORef, newIORef, readIORef, modifyIORef )
 import Data.Map   ( Map )
+import Data.ObjectID ( ObjectID )
 import Data.Text  ( Text )
 
 -- |Error type for RAM storage. Not a lot can go wrong in RAM...
-data RamError = NoTree Id
-              | NoVal Id
+data RamError = NoTree ObjectID
+              | NoVal ObjectID
               | ApiError Text
               deriving ( Show )
 
@@ -28,8 +29,8 @@ instance Error RamError where
 
 -- |Create a new RAM store
 storage :: IO ( Store IO RamError k v
-              , IORef (Map Id (Int,Map k (Int,Id)))
-              , IORef (Map Id v) )
+              , IORef (Map ObjectID (Int,Map k (Int,ObjectID)))
+              , IORef (Map ObjectID v) )
 storage = do
   trees  <- newIORef Map.empty
   values <- newIORef Map.empty
