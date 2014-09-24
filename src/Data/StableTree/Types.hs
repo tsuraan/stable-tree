@@ -241,7 +241,7 @@ getKey (IBranch2 _ _ (k,_,_) _ _ _) = Just $ unwrap k
 -- total.
 completeKey :: Tree Complete k v -> k
 completeKey (Bottom _ (k,_) _ _ _)     = unwrap k
-completeKey (Branch _ _ (k,_,_) _ _ _)   = unwrap k
+completeKey (Branch _ _ (k,_,_) _ _ _) = unwrap k
 
 -- |Convert an entire Tree into a k/v map.
 treeContents :: Ord k => Tree c k v -> Map k v
@@ -255,20 +255,20 @@ treeContents t =
 
 -- |Get the number of levels of branches that live below this one
 getDepth :: Tree c k v -> Depth
-getDepth (Bottom _ _ _ _ _)       = 0
+getDepth (Bottom _ _ _ _ _)     = 0
 getDepth (Branch _ d _ _ _ _)   = d
-getDepth (IBottom0 _ _)           = 0
-getDepth (IBottom1 _ _ _ _)       = 0
+getDepth (IBottom0 _ _)         = 0
+getDepth (IBottom1 _ _ _ _)     = 0
 getDepth (IBranch0 _ d _)       = d
 getDepth (IBranch1 _ d _ _)     = d
 getDepth (IBranch2 _ d _ _ _ _) = d
 
 -- |Get the number of actual values that live below this branch
 getValueCount :: Tree c k v -> ValueCount
-getValueCount (Bottom _ _ _ m _) = 3 + Map.size m
-getValueCount (IBottom0 _ Nothing)     = 0
-getValueCount (IBottom0 _ _)           = 1
-getValueCount (IBottom1 _ _ _ m)       = 2 + Map.size m
+getValueCount (Bottom _ _ _ m _)   = 3 + Map.size m
+getValueCount (IBottom0 _ Nothing) = 0
+getValueCount (IBottom0 _ _)       = 1
+getValueCount (IBottom1 _ _ _ m)   = 2 + Map.size m
 
 getValueCount (Branch _ _ (_,c1,_) (_,c2,_) nterm (_,c3,_)) =
   c1 + c2 + c3 + sum (map fst $ Map.elems nterm)
@@ -326,10 +326,10 @@ branchContents (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
   in Left (conts, mIncomplete >>= \(k,c,v) -> return (unwrap k, c, v))
 
 instance (Ord k, Show k, Show v) => Show (Tree c k v) where
-  show t@(Bottom _ _ _ _ _)       = branchShow "Bottom" t
+  show t@(Bottom _ _ _ _ _)     = branchShow "Bottom" t
   show t@(Branch _ _ _ _ _ _)   = branchShow "Branch" t
-  show t@(IBottom0 _ _)           = branchShow "IBottom" t
-  show t@(IBottom1 _ _ _ _)       = branchShow "IBottom" t
+  show t@(IBottom0 _ _)         = branchShow "IBottom" t
+  show t@(IBottom1 _ _ _ _)     = branchShow "IBottom" t
   show t@(IBranch0 _ _ _)       = branchShow "IBranch" t
   show t@(IBranch1 _ _ _ _)     = branchShow "IBranch" t
   show t@(IBranch2 _ _ _ _ _ _) = branchShow "IBranch" t
