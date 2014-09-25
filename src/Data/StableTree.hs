@@ -19,16 +19,17 @@
 -- using the dang thing now.
 module Data.StableTree
 ( StableTree(..)
-, IsKey(..)
 , fromMap
 , toMap
 ) where
 
+import Data.StableTree.Tree
 import Data.StableTree.Types
 
 import qualified Data.Map as Map
 import Data.Map ( Map )
 import Data.Maybe ( isNothing )
+import Data.Serialize ( Serialize )
 
 -- | @StableTree@ is the opaque type that wraps the actual 'Tree'
 -- implementation. All the public functions operate on this type.
@@ -36,7 +37,7 @@ data StableTree k v = StableTree_I (Tree Incomplete k v)
                     | StableTree_C (Tree Complete k v)
 
 -- | Convert a 'Data.Map.Map' into a 'StableTree'.
-fromMap :: (Ord k, IsKey k) => Map k v -> StableTree k v
+fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
 fromMap m = go m Map.empty
   where
   go values accum =

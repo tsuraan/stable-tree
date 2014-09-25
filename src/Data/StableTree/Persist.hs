@@ -17,7 +17,8 @@ module Data.StableTree.Persist
 , store
 ) where
 
-import Data.StableTree.Types hiding ( hash )
+import Data.StableTree.Tree
+import Data.StableTree.Types
 import Data.StableTree ( StableTree(..) )
 
 import qualified Data.ByteString as BS
@@ -50,13 +51,13 @@ data Store m e k v = Store
   }
 
 -- |Retrieve a tree given its id.
-load :: (Monad m, IsKey k, Ord k, Error e)
+load :: (Monad m, Ord k, Error e, Serialize k, Serialize v)
      => Store m e k v
      -> ObjectID
      -> m (Either e (StableTree k v))
 load s i = runExceptT $ load' s i
 
-load' :: (Monad m, IsKey k, Ord k, Error e)
+load' :: (Monad m, Ord k, Error e, Serialize k, Serialize v)
       => Store m e k v
       -> ObjectID
       -> ExceptT e m (StableTree k v)
@@ -120,14 +121,14 @@ load' storage treeId =
   err = throwError . stableTreeError
 
 -- |Store a tree using a 'Store' and return its calculated 'ObjectID'
-store :: (Monad m, Serialize k, Ord k, Serialize v)
+store :: (Monad m, Ord k, Serialize k, Serialize v)
       => Store m e k v
       -> StableTree k v
       -> m (Either e ObjectID)
 store storage (StableTree_I i) = runExceptT $ store' storage i
 store storage (StableTree_C c) = runExceptT $ store' storage c
 
-store' :: (Monad m, Serialize k, Ord k, Serialize v)
+store' :: (Monad m, Ord k, Serialize k, Serialize v)
        => Store m e k v
        -> Tree c k v
        -> ExceptT e m ObjectID

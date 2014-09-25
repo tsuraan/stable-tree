@@ -27,8 +27,10 @@ executable demo
 
 library
   exposed-modules:     Data.StableTree
+                     , Data.StableTree.Fragment
                      , Data.StableTree.Types
-                     , Data.StableTree.Types.Key
+                     , Data.StableTree.Key
+                     , Data.StableTree.Tree
                      , Data.StableTree.Persist
                      , Data.StableTree.Persist.Ram
   -- other-modules:       
