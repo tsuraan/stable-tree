@@ -27,6 +27,7 @@ executable demo
 
 library
   exposed-modules:     Data.StableTree
+                     , Data.StableTree.Conversion
                      , Data.StableTree.Fragment
                      , Data.StableTree.Types
                      , Data.StableTree.Key

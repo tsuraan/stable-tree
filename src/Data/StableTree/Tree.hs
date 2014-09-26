@@ -25,7 +25,8 @@ module Data.StableTree.Tree
 , getValueCount
 ) where
 
-import Data.StableTree.Key
+import qualified Data.StableTree.Key as Key
+import Data.StableTree.Key ( SomeKey(..), Key, Terminal, Nonterminal )
 import Data.StableTree.Types ( ValueCount, Depth )
 import Data.StableTree.Fragment ( Fragment(..) )
 
@@ -153,14 +154,14 @@ nextBottom :: (Ord k, Serialize k, Serialize v)
 nextBottom values =
   case Map.minViewWithKey values >>= return . second Map.minViewWithKey of
     Just (f1, Just (f2, remain)) ->
-      go (first wrap f1) (first wrap f2) Map.empty remain
+      go (first Key.wrap f1) (first Key.wrap f2) Map.empty remain
     partial ->
       -- this is a bit odd, because I couldn't come up with a better way to tie
       -- the type of the Nothing to the type of the Just, so that
       -- iBottom0ObjectID would be satisfied.
       let m = case partial of
                 Nothing -> Nothing
-                Just ((k,v), Nothing) -> Just (wrap k, v)
+                Just ((k,v), Nothing) -> Just (Key.wrap k, v)
                 _ ->
                   error "This is just here to satisfy a broken exhaustion check"
           o = iBottom0ObjectID m
@@ -173,7 +174,7 @@ nextBottom values =
       Nothing ->
         Left $ IBottom1 (iBottom1ObjectID f1 f2 accum) f1 f2 accum
       Just ((k, v), remain') ->
-        case wrap k of
+        case Key.wrap k of
           SomeKey_N nonterm ->
             go f1 f2 (Map.insert nonterm v accum) remain'
           SomeKey_T term ->
@@ -198,11 +199,11 @@ nextBranch branches mIncomplete =
         Nothing ->
           Left $ IBottom0 (iBottom0ObjectID (nothing branches)) Nothing
         Just (ik, iv) ->
-          let tup = (wrap ik, getValueCount iv, iv)
+          let tup = (Key.wrap ik, getValueCount iv, iv)
               oid = iBranch0ObjectID depth tup
           in Left $ IBranch0 oid depth tup
     Just ((k,v), Nothing) ->
-      let tup = (wrap k, getValueCount v, v)
+      let tup = (Key.wrap k, getValueCount v, v)
           may = wrapMKey mIncomplete
           oid = iBranch1ObjectID depth tup may
       in Left $ IBranch1 oid depth tup may
@@ -224,7 +225,7 @@ nextBranch branches mIncomplete =
       Just ((SomeKey_N nonterm,c,v), remain') ->
         go f1 f2 (Map.insert nonterm (c,v) accum) remain'
 
-  wrapKey (k,v) = (wrap k, getValueCount v, v)
+  wrapKey (k,v) = (Key.wrap k, getValueCount v, v)
 
   wrapMKey = (>>=return . wrapKey)
 
@@ -248,20 +249,20 @@ nextBranch branches mIncomplete =
 -- |Get the key of the first entry in this branch. If the branch is empty,
 -- returns Nothing.
 getKey :: Tree c k v -> Maybe k
-getKey (Bottom _ (k,_) _ _ _)       = Just $ unwrap k
+getKey (Bottom _ (k,_) _ _ _)       = Just $ Key.unwrap k
 getKey (IBottom0 _ Nothing)         = Nothing
-getKey (IBottom0 _ (Just (k,_)))    = Just $ unwrap k
-getKey (IBottom1 _ (k,_) _ _)       = Just $ unwrap k
-getKey (Branch _ _ (k,_,_) _ _ _)   = Just $ unwrap k
-getKey (IBranch0 _ _ (k,_,_))       = Just $ unwrap k
-getKey (IBranch1 _ _ (k,_,_) _)     = Just $ unwrap k
-getKey (IBranch2 _ _ (k,_,_) _ _ _) = Just $ unwrap k
+getKey (IBottom0 _ (Just (k,_)))    = Just $ Key.unwrap k
+getKey (IBottom1 _ (k,_) _ _)       = Just $ Key.unwrap k
+getKey (Branch _ _ (k,_,_) _ _ _)   = Just $ Key.unwrap k
+getKey (IBranch0 _ _ (k,_,_))       = Just $ Key.unwrap k
+getKey (IBranch1 _ _ (k,_,_) _)     = Just $ Key.unwrap k
+getKey (IBranch2 _ _ (k,_,_) _ _ _) = Just $ Key.unwrap k
 
 -- |Get the key of the fist entry in this complete branch. This function is
 -- total.
 completeKey :: Tree Complete k v -> k
-completeKey (Bottom _ (k,_) _ _ _)     = unwrap k
-completeKey (Branch _ _ (k,_,_) _ _ _) = unwrap k
+completeKey (Bottom _ (k,_) _ _ _)     = Key.unwrap k
+completeKey (Branch _ _ (k,_,_) _ _ _) = Key.unwrap k
 
 -- |Convert an entire Tree into a k/v map.
 treeContents :: Ord k => Tree c k v -> Map k v
@@ -320,40 +321,43 @@ branchContents :: Ord k
                          , Maybe (k, ValueCount, Tree Incomplete k v))
                          ( Map k v )
 branchContents (Bottom _ (k1,v1) (k2,v2) terms (kt,vt)) =
-  let terms' = Map.mapKeys fromKey terms
-      conts  = Map.insert (unwrap k1) v1
-             $ Map.insert (unwrap k2) v2
-             $ Map.insert (fromKey kt) vt
+  let terms' = Map.mapKeys Key.fromKey terms
+      conts  = Map.insert (Key.unwrap k1) v1
+             $ Map.insert (Key.unwrap k2) v2
+             $ Map.insert (Key.fromKey kt) vt
              terms'
   in Right conts
 branchContents (Branch _ _d (k1,c1,v1) (k2,c2,v2) terms (kt,ct,vt)) =
-  let terms' = Map.mapKeys fromKey terms
-      conts  = Map.insert (unwrap k1) (c1,v1)
-             $ Map.insert (unwrap k2) (c2,v2)
-             $ Map.insert (fromKey kt) (ct,vt)
+  let terms' = Map.mapKeys Key.fromKey terms
+      conts  = Map.insert (Key.unwrap k1) (c1,v1)
+             $ Map.insert (Key.unwrap k2) (c2,v2)
+             $ Map.insert (Key.fromKey kt) (ct,vt)
              terms'
   in Left (conts, Nothing)
 branchContents (IBottom0 _ Nothing) =
   Right Map.empty
 branchContents (IBottom0 _ (Just (k,v))) =
-  Right $ Map.singleton (unwrap k) v
+  Right $ Map.singleton (Key.unwrap k) v
 branchContents (IBottom1 _ (k1,v1) (k2,v2) terms) =
-  let terms' = Map.mapKeys fromKey terms
-      conts  = Map.insert (unwrap k1) v1
-             $ Map.insert (unwrap k2) v2
+  let terms' = Map.mapKeys Key.fromKey terms
+      conts  = Map.insert (Key.unwrap k1) v1
+             $ Map.insert (Key.unwrap k2) v2
              terms'
   in Right conts
 branchContents (IBranch0 _ _d (ik,ic,iv)) =
-  Left (Map.empty, Just (unwrap ik, ic, iv))
+  Left (Map.empty, Just (Key.unwrap ik, ic, iv))
 branchContents (IBranch1 _ _d (k1,c1,v1) mIncomplete) =
-  Left ( Map.singleton (unwrap k1) (c1,v1)
-       , mIncomplete >>= (\(k,c,v) -> return (unwrap k,c,v)))
+  Left ( Map.singleton (Key.unwrap k1) (c1,v1)
+       , mIncomplete >>= (\(k,c,v) -> return (Key.unwrap k,c,v)))
 branchContents (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
-  let terms' = Map.mapKeys fromKey terms
-      conts  = Map.insert (unwrap k1) (c1,v1)
-             $ Map.insert (unwrap k2) (c2,v2)
+  let terms' = Map.mapKeys Key.fromKey terms
+      conts  = Map.insert (Key.unwrap k1) (c1,v1)
+             $ Map.insert (Key.unwrap k2) (c2,v2)
              terms'
-  in Left (conts, mIncomplete >>= \(k,c,v) -> return (unwrap k, c, v))
+  in Left (conts, mIncomplete >>= \(k,c,v) -> return (Key.unwrap k, c, v))
+
+instance Eq (Tree c k v) where
+  t1 == t2 = getObjectID t1 == getObjectID t2
 
 instance (Ord k, Show k, Show v) => Show (Tree c k v) where
   show t@(Bottom _ _ _ _ _)     = branchShow "Bottom" t
@@ -388,10 +392,10 @@ bottomObjectID :: (Ord k, Serialize k, Serialize v)
                -> (Key Terminal k, v)
                -> ObjectID
 bottomObjectID (sk1, v1) (sk2, v2) ntmap (tk3, v3) =
-  let m = Map.insert (unwrap sk1) v1
-        $ Map.insert (unwrap sk2) v2
-        $ Map.insert (fromKey tk3) v3
-        $ Map.mapKeys fromKey ntmap
+  let m = Map.insert (Key.unwrap sk1) v1
+        $ Map.insert (Key.unwrap sk2) v2
+        $ Map.insert (Key.fromKey tk3) v3
+        $ Map.mapKeys Key.fromKey ntmap
   in calculateSerialize $ FragmentBottom m
 
 branchObjectID :: (Ord k, Serialize k, Serialize v)
@@ -402,11 +406,11 @@ branchObjectID :: (Ord k, Serialize k, Serialize v)
                -> (Key Terminal k, ValueCount, Tree Complete k v)
                -> ObjectID
 branchObjectID d (sk1, c1, t1) (sk2, c2, t2) ntmap (tk3, c3, t3) =
-  let m = Map.insert (unwrap sk1) (c1,getObjectID t1)
-        $ Map.insert (unwrap sk2) (c2,getObjectID t2)
-        $ Map.insert (fromKey tk3) (c3,getObjectID t3)
+  let m = Map.insert (Key.unwrap sk1) (c1,getObjectID t1)
+        $ Map.insert (Key.unwrap sk2) (c2,getObjectID t2)
+        $ Map.insert (Key.fromKey tk3) (c3,getObjectID t3)
         $ Map.map (second getObjectID)
-        $ Map.mapKeys fromKey ntmap
+        $ Map.mapKeys Key.fromKey ntmap
       b = FragmentBranch d m
       _ = witness t1 b
   in calculateSerialize b
@@ -420,7 +424,7 @@ iBottom0ObjectID mkv =
       -- our empty fragment bottom can type check
       f = case mkv of
             Nothing -> FragmentBottom m
-            Just (sk, v) -> FragmentBottom $ Map.insert (unwrap sk) v m
+            Just (sk, v) -> FragmentBottom $ Map.insert (Key.unwrap sk) v m
   in calculateSerialize f
 
 iBottom1ObjectID :: (Ord k, Serialize k, Serialize v)
@@ -429,9 +433,9 @@ iBottom1ObjectID :: (Ord k, Serialize k, Serialize v)
                  -> Map (Key Nonterminal k) v
                  -> ObjectID
 iBottom1ObjectID (sk1, v1) (sk2, v2) ntmap =
-  let m = Map.insert (unwrap sk1) v1
-        $ Map.insert (unwrap sk2) v2
-        $ Map.mapKeys fromKey ntmap
+  let m = Map.insert (Key.unwrap sk1) v1
+        $ Map.insert (Key.unwrap sk2) v2
+        $ Map.mapKeys Key.fromKey ntmap
       b = FragmentBottom m
   in calculateSerialize b
 
@@ -440,7 +444,7 @@ iBranch0ObjectID :: (Ord k, Serialize k, Serialize v)
                  -> (SomeKey k, ValueCount, Tree Incomplete k v)
                  -> ObjectID
 iBranch0ObjectID d (sk,c,t) =
-  let m = Map.singleton (unwrap sk) (c, getObjectID t)
+  let m = Map.singleton (Key.unwrap sk) (c, getObjectID t)
       b = FragmentBranch d m
       _ = witness t b
   in calculateSerialize b
@@ -451,11 +455,11 @@ iBranch1ObjectID :: (Ord k, Serialize k, Serialize v)
                  -> Maybe (SomeKey k, ValueCount, Tree Incomplete k v)
                  -> ObjectID
 iBranch1ObjectID d (sk, c, t) minc =
-  let m = Map.singleton (unwrap sk) (c, getObjectID t)
+  let m = Map.singleton (Key.unwrap sk) (c, getObjectID t)
       m' = case minc of
             Nothing -> m
             Just (sk', c', t') ->
-              Map.insert (unwrap sk') (c', getObjectID t') m
+              Map.insert (Key.unwrap sk') (c', getObjectID t') m
       b = FragmentBranch d m'
       _ = witness t b
   in calculateSerialize b
@@ -468,14 +472,14 @@ iBranch2ObjectID :: (Ord k, Serialize k, Serialize v)
                  -> Maybe (SomeKey k, ValueCount, Tree Incomplete k v)
                  -> ObjectID
 iBranch2ObjectID d (sk1, c1, t1) (sk2, c2, t2) ntmap minc =
-  let m = Map.insert (unwrap sk1) (c1, getObjectID t1)
-        $ Map.insert (unwrap sk2) (c2, getObjectID t2)
-        $ Map.mapKeys fromKey
+  let m = Map.insert (Key.unwrap sk1) (c1, getObjectID t1)
+        $ Map.insert (Key.unwrap sk2) (c2, getObjectID t2)
+        $ Map.mapKeys Key.fromKey
         $ Map.map (second getObjectID) ntmap
       m' = case minc of
             Nothing -> m
             Just (sk3, c3, t3) ->
-              Map.insert (unwrap sk3) (c3, getObjectID t3) m
+              Map.insert (Key.unwrap sk3) (c3, getObjectID t3) m
       b = FragmentBranch d m'
       _ = witness t1 b
   in calculateSerialize b
