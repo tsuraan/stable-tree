@@ -11,29 +11,22 @@
 -- then the 'load' and 'store' functions can just do their thing. If necessary,
 -- a user can also implement 'Serialize' for custom data types.
 module Data.StableTree.Persist
-( Store(..)
-, Error(..)
+( Error(..)
 , load
+, load'
 , store
+, store'
 ) where
 
-import Data.StableTree.Tree
-import Data.StableTree.Types
-import Data.StableTree ( StableTree(..) )
+import Data.StableTree.Tree       ( Tree )
+import Data.StableTree.Fragment   ( Fragment(..) )
+import Data.StableTree.Conversion ( toFragments, fromFragments )
+import Data.StableTree            ( StableTree(..) )
 
-import qualified Data.ByteString as BS
 import qualified Data.Map as Map
-import qualified Data.ObjectID as ObjectID
-import Blaze.ByteString.Builder            ( toByteString )
-import Blaze.ByteString.Builder.Char8      ( fromShow, fromString, fromChar )
-import Control.Arrow                       ( second )
-import Control.Monad.Except                ( ExceptT, runExceptT, lift, throwError )
-import Data.Map                            ( Map )
-import Data.Monoid                         ( (<>) )
-import Data.ObjectID                       ( ObjectID )
-import Data.Serialize                      ( Serialize(..) )
-import Data.Serialize.Put                  ( runPut )
-import Data.Text                           ( Text )
+import Data.ObjectID  ( ObjectID )
+import Data.Serialize ( Serialize(..) )
+import Data.Text      ( Text )
 
 -- |Things go wrong with end-user storage, but things can also go wrong with
 -- reconstructing tree values. Implement 'stableTreeError' to allow 'load' and
@@ -41,156 +34,82 @@ import Data.Text                           ( Text )
 class Error e where
   stableTreeError :: Text -> e
 
--- |Write appropriate functions here to load and store primitive parts of
--- trees.
-data Store m e k v = Store
-  { loadTree   :: ObjectID -> m (Either e (Depth, Map k (ValueCount, ObjectID)))
-  , loadValue  :: ObjectID -> m (Either e v)
-  , storeTree  :: ObjectID -> Depth -> Map k (ValueCount, ObjectID) -> m (Maybe e)
-  , storeValue :: ObjectID -> v -> m (Maybe e)
-  }
-
--- |Retrieve a tree given its id.
-load :: (Monad m, Ord k, Error e, Serialize k, Serialize v)
-     => Store m e k v
-     -> ObjectID
-     -> m (Either e (StableTree k v))
-load s i = runExceptT $ load' s i
-
-load' :: (Monad m, Ord k, Error e, Serialize k, Serialize v)
-      => Store m e k v
-      -> ObjectID
-      -> ExceptT e m (StableTree k v)
-load' storage treeId =
-  liftEither (loadTree storage treeId) >>= \case
-    (0, contents)     -> loadBottom contents
-    (depth, contents) -> loadBranch depth contents
+-- |Record the tree into storage. This works like a fold, where the function
+-- takes an accumulating state and each tree fragment to store, while returning
+-- either an error message (which will abort the loop immediately) or the next
+-- state for the accumulator.
+--
+-- Any fragment referring to other fragments ('FragmentBranch' fragments) will
+-- be given to the fold only after all their children have been given to the
+-- fold. Exact ordering beyond that is not guaranteed, but the current
+-- behaviour is post-order depth-first traversal.
+store :: (Monad m, Error e, Ord k)
+      => (a -> ObjectID -> Fragment k v -> m (Either e a))
+      -> a
+      -> Tree c k v
+      -> m (Either e a)
+store fn a0 = go a0 . toFragments
   where
-  loadBottom contents = do
-    vals <- loadValues contents Map.empty
-    case nextBottom vals of
-      Left i -> return $ StableTree_I i
-      Right (c,r) ->
-        if Map.null r
-          then return $ StableTree_C c
-          else err "Too many terminal keys in loadBottom"
+  go accum [] = return $ Right accum
+  go accum ((fragid, frag):frags) =
+    fn accum fragid frag >>= \case
+      Left err -> return $ Left err
+      Right accum' -> go accum' frags
 
-  loadValues cont accum =
-    case Map.minViewWithKey cont of
-      Nothing -> return accum
-      Just ((k,(_,valId)),rest) -> do
-        v <- liftEither $ loadValue storage valId
-        loadValues rest $ Map.insert k v accum
-
-  loadBranch depth contents = do
-    children <- loadChildren contents Map.empty
-    let classify s = case s of StableTree_I i -> Right i
-                               StableTree_C c -> Left c
-        (cs, is)   = Map.mapEither classify children
-    case Map.minViewWithKey is >>= return . second Map.minViewWithKey of
-      Nothing -> go cs Nothing
-      Just (_, Just (_,_)) ->
-        err "Too many incomplete trees in loadBranch"
-      Just ((ik,iv), Nothing) ->
-        case Map.maxViewWithKey cs of
-          Nothing -> go cs $ Just (ik, iv)
-          Just ((ck,_), _) ->
-            if ck > ik
-              then err "Saw complete trees after incomplete..."
-              else go cs $ Just (ik, iv)
-    where
-    go completes mIncomplete =
-      case nextBranch completes mIncomplete of
-        Left i ->
-          if getDepth i == depth
-            then return $ StableTree_I i
-            else err "Depth mismatch in loadBranch"
-        Right (c,m) | Map.null m ->
-          if getDepth c == depth
-            then return $ StableTree_C c
-            else err "Depth mismatch in loadBranch"
-        _ -> err "Too many terminal keys in loadBranch"
-
-  loadChildren cont accum =
-    case Map.minViewWithKey cont of
-      Nothing -> return accum
-      Just ((k,(_,valId)),rest) -> do
-        subtree <- load' storage valId
-        loadChildren rest $ Map.insert k subtree accum
-
-  err = throwError . stableTreeError
-
--- |Store a tree using a 'Store' and return its calculated 'ObjectID'
-store :: (Monad m, Ord k, Serialize k, Serialize v)
-      => Store m e k v
-      -> StableTree k v
-      -> m (Either e ObjectID)
-store storage (StableTree_I i) = runExceptT $ store' storage i
-store storage (StableTree_C c) = runExceptT $ store' storage c
-
-store' :: (Monad m, Ord k, Serialize k, Serialize v)
-       => Store m e k v
+store' :: (Monad m, Error e, Ord k)
+       => (ObjectID -> Fragment k v -> m (Maybe e))
        -> Tree c k v
-       -> ExceptT e m ObjectID
-store' storage tree =
-  case branchContents tree of
-    Left subtrees -> storeBranch subtrees
-    Right kvmap -> storeBottom kvmap
+       -> m (Either e ObjectID)
+store' fn = store fn' undefined
+  where
+  fn' _accum oid frag =
+    fn oid frag >>= \case
+      Nothing -> return $ Right oid
+      Just err -> return $ Left err
+
+load :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
+     => (a -> ObjectID -> m (Either e (a, Fragment k v)))
+     -> a
+     -> ObjectID
+     -> m (Either e (a, StableTree k v))
+load fn a0 top =
+  recur a0 Map.empty [top] >>= \case
+    Left err ->
+      return $ Left err
+    Right (accum, frags) ->
+      case Map.lookup top frags of
+        Nothing ->
+          return $ Left (stableTreeError "load/recur failed to find top")
+        Just frag ->
+          case fromFragments frags frag of
+            Left err -> return $ Left (stableTreeError err)
+            Right (Left t) ->
+              return $ Right (accum, StableTree_I t)
+            Right (Right t) ->
+              return $ Right (accum, StableTree_C t)
 
   where
-  storeBranch (complete, mIncomplete) = do
-    key_ids <- storeSubtrees complete Map.empty
-    case mIncomplete of
-      Nothing -> storeKeyIds key_ids
-      Just (k,c,v) -> do
-        treeId <- store' storage v
-        storeKeyIds $ Map.insert k (c,treeId) key_ids
+  recur accum frags [] = return $ Right (accum, frags)
+  recur accum frags (oid:rest) = fn accum oid >>= \case
+    Left err -> return $ Left err
+    Right (accum', frag@(FragmentBottom _)) ->
+      recur accum' (Map.insert oid frag frags) rest
+    Right (accum', frag) ->
+      let children = fragmentChildren frag
+          oids     = map snd $ Map.elems children
+      in recur accum' (Map.insert oid frag frags) (oids ++ rest)
 
-  storeSubtrees kvmap accum =
-    case Map.minViewWithKey kvmap of
-      Nothing -> return accum
-      Just ((k,(c,t)), rest) -> do
-        treeId <- store' storage t
-        storeSubtrees rest $ Map.insert k (c,treeId) accum
-
-  storeBottom kvmap = do
-    key_ids <- storeValues kvmap Map.empty
-    storeKeyIds key_ids
-
-  storeValues kvmap accum = do
-    case Map.minViewWithKey kvmap of
-      Nothing -> return accum
-      Just ((k,v), rest) -> do
-        let valId = ObjectID.calculateSerialize v
-        _ <- liftMaybe $ storeValue storage valId v
-        storeValues rest $ Map.insert k (1,valId) accum
-
-  storeKeyIds key_ids =
-    let depth = getDepth tree
-        valId = treeHash depth $ Map.map snd key_ids
-    in do liftMaybe $ storeTree storage valId depth key_ids
-          return valId
-
-treeHash :: Serialize k => Int -> Map k ObjectID -> ObjectID
-treeHash depth contents =
-  let bodybs   = runPut putBody
-      bodylen  = fromShow $ BS.length bodybs
-      header   = toByteString $ (fromString "tree ")
-                                <> bodylen <> fromChar ' '
-                                <> fromShow depth <> fromChar '\0'
-  in ObjectID.calculateByteString $ BS.append header bodybs
+load' :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
+      => (ObjectID -> m (Either e (Fragment k v)))
+      -> ObjectID
+      -> m (Either e (StableTree k v))
+load' fn top =
+  load fn' undefined top >>= \case
+    Left err -> return $ Left err
+    Right (_, tree) -> return $ Right tree
   where
-  putBody = mapM_ (\(k,v) -> put k >> put v) (Map.toAscList contents)
-
-liftEither :: Monad m => m (Either a b) -> ExceptT a m b
-liftEither act =
-  lift act >>= \case
-    Left err -> throwError err
-    Right val -> return val
-
-liftMaybe :: Monad m => m (Maybe e) -> ExceptT e m ()
-liftMaybe act =
-  lift act >>= \case
-    Just err -> throwError err
-    Nothing -> return ()
+  fn' st oid =
+    fn oid >>= \case
+      Left err -> return $ Left err
+      Right frag -> return $ Right (st, frag)
 

@@ -33,7 +33,7 @@ library
                      , Data.StableTree.Key
                      , Data.StableTree.Tree
                      , Data.StableTree.Persist
-                     , Data.StableTree.Persist.Ram
+                     --, Data.StableTree.Persist.Ram
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.8

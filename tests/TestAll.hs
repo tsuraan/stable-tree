@@ -3,8 +3,8 @@ module Main
 ) where
 
 import qualified Data.StableTree as ST
-import Data.StableTree.Persist ( store, load )
-import Data.StableTree.Persist.Ram ( storage )
+-- import Data.StableTree.Persist ( store, load )
+-- import Data.StableTree.Persist.Ram ( storage )
 
 import qualified Data.Map as Map
 import Control.Arrow ( first )
@@ -22,11 +22,13 @@ main = defaultMain $
     , testProperty "Float/Int" float_int
     , testProperty "ByteString/Int" bytestring_int
     ]
+  {-
   , testGroup "Stored"
     [ testProperty "Int/Int" store_int_int
     , testProperty "Float/Int" store_float_int
     , testProperty "ByteString/Int" store_bytestring_int
     ]
+    -}
   ]
   where
 
@@ -48,6 +50,7 @@ main = defaultMain $
         st = ST.fromMap m
     in m == ST.toMap st
 
+  {-
   store_int_int :: [(Int,Int)] -> Property
   store_int_int pairs = monadicIO $ do
     (s,_,_) <- run storage
@@ -74,4 +77,5 @@ main = defaultMain $
     Right tid <- run $ store s st
     Right st' <- run $ load s tid
     assert $ m == ST.toMap st'
+    -}
 

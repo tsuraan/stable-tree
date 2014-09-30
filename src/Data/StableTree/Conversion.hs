@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- |
 -- Module    : Data.StableTree.Conversion
 -- Copyright : Jeremy Groven
@@ -13,10 +14,12 @@ import Data.StableTree.Fragment
 import Data.StableTree.Tree
 
 import qualified Data.Map as Map
+import qualified Data.Text as Text
 import Control.Arrow  ( second )
 import Data.Map       ( Map )
 import Data.ObjectID  ( ObjectID )
 import Data.Serialize ( Serialize )
+import Data.Text      ( Text )
 
 toFragments :: Ord k => Tree c k v -> [(ObjectID, Fragment k v)]
 toFragments tree =
@@ -38,8 +41,8 @@ toFragments tree =
 fromFragments :: (Ord k, Serialize k, Serialize v)
               => Map ObjectID (Fragment k v)
               -> Fragment k v
-              -> Either String (Either (Tree Incomplete k v)
-                                       (Tree Complete k v))
+              -> Either Text (Either (Tree Incomplete k v)
+                                     (Tree Complete k v))
 fromFragments _ (FragmentBottom assocs) =
   case nextBottom assocs of
     Left i -> Right $ Left i
@@ -60,7 +63,7 @@ fromFragments loaded (FragmentBranch depth children) =
   readChildren _ [] = Left "Invalid empty branch"
   readChildren accum [(key,(cnt,oid))] =
     case Map.lookup oid loaded of
-      Nothing -> Left $ "Failed to find object with id " ++ show oid
+      Nothing -> Left $ cannotFind oid
       Just frag ->
         case fromFragments loaded frag of
           Left err                   -> Left err
@@ -73,7 +76,7 @@ fromFragments loaded (FragmentBranch depth children) =
 
   readChildren accum ((key,(cnt,oid)):rest) =
     case Map.lookup oid loaded of
-      Nothing -> Left $ "Failed to find object with id " ++ show oid
+      Nothing -> Left $ cannotFind oid
       Just frag ->
         case fromFragments loaded frag of
           Left err -> Left err
@@ -83,4 +86,8 @@ fromFragments loaded (FragmentBranch depth children) =
             | otherwise -> Left "Value Count Mismatch"
           _ -> Left "Got incomplete branch in non-right position"
 
+
+  cannotFind oid =
+    Text.append "Failed to find object with ObjectID "
+                (Text.pack $ show oid)
 

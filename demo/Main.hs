@@ -8,7 +8,7 @@ module Main
 
 import Data.StableTree             ( fromMap )
 import Data.StableTree.Persist     ( store )
-import Data.StableTree.Persist.Ram ( storage )
+-- import Data.StableTree.Persist.Ram ( storage )
 
 import qualified Data.Map as Map
 import Data.IORef ( readIORef )
@@ -19,6 +19,8 @@ import Data.IORef ( readIORef )
 -- so-often.
 main :: IO ()
 main = do
+  putStrLn "hi"
+  {-
   (s, trees, values) <- storage
   mapM_ (doRun s trees values) [0,100..1000::Int]
   Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[100..1000]])
@@ -67,3 +69,4 @@ main = do
 -- that calculation.
 stupidCount :: Int -> String
 stupidCount i = show $ i*(i-1) `div` 2
+-}
