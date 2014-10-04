@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 -- |
 -- Module    : Data.StableTree.Persist.Ram
 -- Copyright : Jeremy Groven
@@ -7,56 +8,45 @@
 -- Maps that are wrapped in IORefs.
 module Data.StableTree.Persist.Ram
 ( RamError(..)
-, storage
+, store
+, load
 ) where
 
-import Data.StableTree.Persist ( Error(..), Store(..) )
+import Data.StableTree.Persist ( Error(..) )
+import Data.StableTree.Fragment ( Fragment )
 
 import qualified Data.Map as Map
-import Data.IORef ( IORef, newIORef, readIORef, modifyIORef )
+import Control.Monad.State.Strict ( State, modify, gets )
 import Data.Map   ( Map )
 import Data.ObjectID ( ObjectID )
 import Data.Text  ( Text )
+import Data.Serialize ( Serialize, encode, decode )
+import Data.ByteString ( ByteString )
 
 -- |Error type for RAM storage. Not a lot can go wrong in RAM...
-data RamError = NoTree ObjectID
-              | NoVal ObjectID
+data RamError = NotFound ObjectID
+              | SerializationError String
               | ApiError Text
               deriving ( Show )
 
 instance Error RamError where
   stableTreeError = ApiError
 
--- |Create a new RAM store
-storage :: IO ( Store IO RamError k v
-              , IORef (Map ObjectID (Int,Map k (Int,ObjectID)))
-              , IORef (Map ObjectID v) )
-storage = do
-  trees  <- newIORef Map.empty
-  values <- newIORef Map.empty
-  return ( Store (lt trees) (lv values) (st trees) (sv values)
-         , trees
-         , values )
-  where
-  lt store tid = do
-    m <- readIORef store
-    case Map.lookup tid m of
-      Nothing -> return $ Left $ NoTree tid
-      Just (depth, children) ->
-        return $ Right (depth, children)
+type StableTreeState = State (Map ByteString ByteString)
 
-  lv store vid = do
-    m <- readIORef store
-    case Map.lookup vid m of
-      Nothing -> return $ Left $ NoVal vid
-      Just v -> return $ Right v
+store :: (Ord k, Serialize k, Serialize v)
+      => ObjectID -> Fragment k v -> StableTreeState (Maybe RamError)
+store oid frag = do
+  modify $ Map.insert (encode oid) (encode frag)
+  return Nothing
 
-  st store tid depth tree = do
-    modifyIORef store $ Map.insert tid (depth,tree)
-    return Nothing
-
-  sv store vid val = do
-    -- putStrLn $ "Storing " ++ show vid
-    modifyIORef store $ Map.insert vid val
-    return Nothing
+load :: (Ord k, Serialize k, Serialize v)
+     => ObjectID -> StableTreeState (Either RamError (Fragment k v))
+load oid =
+  gets (Map.lookup $ encode oid) >>= \case
+    Nothing -> return $ Left $ NotFound oid
+    Just fragBS ->
+      case decode fragBS of
+        Left err -> return $ Left $ SerializationError err
+        Right frag -> return $ Right frag
 

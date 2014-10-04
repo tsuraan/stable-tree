@@ -18,7 +18,6 @@ module Data.StableTree.Persist
 , store'
 ) where
 
-import Data.StableTree.Tree       ( Tree )
 import Data.StableTree.Fragment   ( Fragment(..) )
 import Data.StableTree.Conversion ( toFragments, fromFragments )
 import Data.StableTree            ( StableTree(..) )
@@ -46,9 +45,12 @@ class Error e where
 store :: (Monad m, Error e, Ord k)
       => (a -> ObjectID -> Fragment k v -> m (Either e a))
       -> a
-      -> Tree c k v
+      -> StableTree k v
       -> m (Either e a)
-store fn a0 = go a0 . toFragments
+store fn a0 tree =
+  case tree of
+    (StableTree_I i) ->  go a0 $ toFragments i
+    (StableTree_C c) ->  go a0 $ toFragments c
   where
   go accum [] = return $ Right accum
   go accum ((fragid, frag):frags) =
@@ -58,7 +60,7 @@ store fn a0 = go a0 . toFragments
 
 store' :: (Monad m, Error e, Ord k)
        => (ObjectID -> Fragment k v -> m (Maybe e))
-       -> Tree c k v
+       -> StableTree k v
        -> m (Either e ObjectID)
 store' fn = store fn' undefined
   where

@@ -33,7 +33,7 @@ library
                      , Data.StableTree.Key
                      , Data.StableTree.Tree
                      , Data.StableTree.Persist
-                     --, Data.StableTree.Persist.Ram
+                     , Data.StableTree.Persist.Ram
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.8
@@ -54,7 +54,9 @@ test-suite test-all
   main-is:             TestAll.hs
   build-depends:       base >=4.6 && < 4.8
                      , bytestring-arbitrary
+                     , cereal
                      , containers
+                     , mtl >= 2.2.1
                      , QuickCheck >= 2.1
                      , stable-tree
                      , tasty
