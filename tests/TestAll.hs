@@ -3,11 +3,8 @@ module Main
 ( main
 ) where
 
-import Data.StableTree.Fragment ( Fragment )
-import Data.StableTree.Persist  ( Error(..) )
-
-import qualified Data.StableTree         as ST
-import qualified Data.StableTree.Persist as Persist
+import qualified Data.StableTree as ST
+import Data.StableTree ( Fragment, Error(..) )
 
 import qualified Data.Map as Map
 import Control.Arrow              ( first )
@@ -70,8 +67,8 @@ main = defaultMain $
     go = do
       let m  = Map.fromList pairs
           st = ST.fromMap m
-      Right tid <- Persist.store' store st
-      Right st' <- Persist.load' load tid
+      Right tid <- ST.store' store st
+      Right st' <- ST.load' load tid
       return $ m == ST.toMap st'
 
 -- |Error type for RAM storage. Not a lot can go wrong in RAM...

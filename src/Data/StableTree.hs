@@ -26,11 +26,13 @@ module Data.StableTree
 , load'
 , store
 , store'
+, Fragment(..)
 ) where
 
 import qualified Data.StableTree.Tree as Tree
-import Data.StableTree.Persist ( Error(..), load, load', store, store' )
-import Data.StableTree.Tree    ( StableTree(..) )
+import Data.StableTree.Fragment ( Fragment(..) )
+import Data.StableTree.Persist  ( Error(..), load, load', store, store' )
+import Data.StableTree.Tree     ( StableTree(..) )
 
 import qualified Data.Map as Map
 import Data.Map       ( Map )
