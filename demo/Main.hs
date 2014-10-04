@@ -6,12 +6,20 @@ module Main
 ( main
 ) where
 
-import Data.StableTree             ( fromMap )
-import Data.StableTree.Persist     ( store )
--- import Data.StableTree.Persist.Ram ( storage )
+import Data.StableTree
 
 import qualified Data.Map as Map
-import Data.IORef ( readIORef )
+import Control.Monad              ( foldM )
+import Control.Monad.State.Strict ( State, runState, modify )
+import Data.Map                   ( Map )
+import Data.ObjectID              ( ObjectID )
+import Data.Text                  ( Text )
+
+type S = Map ObjectID (Fragment Int Int)
+
+data DemoError = ApiError Text
+instance Error DemoError where
+  stableTreeError = ApiError
 
 -- |Make a ton of related maps, storing all of them in a RAM store and printing
 -- out the total number of unique entries in that store and how many database
@@ -19,35 +27,33 @@ import Data.IORef ( readIORef )
 -- so-often.
 main :: IO ()
 main = do
-  putStrLn "hi"
-  {-
-  (s, trees, values) <- storage
-  mapM_ (doRun s trees values) [0,100..1000::Int]
-  Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[100..1000]])
-  prTrees trees values
-  Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[200..1000]])
-  prTrees trees values
-  Right _ <- store s (fromMap $ Map.fromList [(a,a+1)|a<-[0..400]++[600..1000]])
-  prTrees trees values
+  m0 <- foldM doRun Map.empty [0,100..1000::Int]
+  let m1 = upd m0 [100..1000]
+  prTrees m1
+  let m2 = upd m1 [200..1000]
+  prTrees m2
+  let m3 = upd m2 $ [0..400] ++ [600..1000]
+  prTrees m3
 
   where
-  doRun s trees values i = do
-    mapM_ (upd s) [i..i+100]
-    putStr $ stupidCount (i+100) ++ " "
-    prTrees trees values
+  doRun :: S -> Int -> IO S
+  doRun m0 i0 = do
+    let m' = foldl (\m i -> upd m [0..i]) m0 [i0..i0+100]
+    putStr $ "naive gives: " ++ stupidCount (i0+100) ++ " / stable gives: "
+    prTrees m'
+    return m'
 
-  upd s i = do
-    let m = Map.fromList [(a,a+1) | a <- [0..i]]
-        t = fromMap m
-    store s t
+  upd :: S -> [Int] -> S
+  upd m is =
+    let t = fromMap $ Map.fromList [(a,a+1) | a <- is]
+        (_,m') = runState (save t) m
+    in m'
 
-  prTrees trees values = do
-    trMap <- readIORef trees
-    let tnum = Map.size trMap
-        tsum = sum $ map (Map.size . snd) $ Map.elems trMap
-    vsum <- readIORef values >>= return . Map.size
-    putStrLn $ show (tsum+vsum) ++ " (" ++ show tnum ++ "," ++ show tsum
-               ++ "," ++ show vsum ++ ")"
+  save :: StableTree Int Int -> State S (Either DemoError ObjectID)
+  save = store' (\oid frag -> modify (Map.insert oid frag) >> return Nothing)
+
+  prTrees m = do
+    putStrLn $ (show $ Map.size m) ++ " unique entries"
 
 -- |The typical way of storing key/value maps in SQL is to use a relational
 -- table, like this:
@@ -69,4 +75,3 @@ main = do
 -- that calculation.
 stupidCount :: Int -> String
 stupidCount i = show $ i*(i-1) `div` 2
--}
