@@ -1,18 +1,25 @@
+{-# LANGUAGE LambdaCase #-}
 module Main
 ( main
 ) where
 
-import qualified Data.StableTree as ST
+import Data.StableTree.Fragment ( Fragment )
+import Data.StableTree.Persist  ( Error(..) )
+
+import qualified Data.StableTree         as ST
 import qualified Data.StableTree.Persist as Persist
-import Data.StableTree.Persist.Ram as Ram
 
 import qualified Data.Map as Map
-import Control.Arrow ( first )
-import Control.Monad.State.Strict ( runState )
-import Data.Serialize ( Serialize )
-import Data.ByteString.Arbitrary ( ArbByteString(..) )
+import Control.Arrow              ( first )
+import Control.Monad.State.Strict ( State, runState, modify, gets )
+import Data.ByteString            ( ByteString )
+import Data.ByteString.Arbitrary  ( ArbByteString(..) )
+import Data.Map                   ( Map )
+import Data.ObjectID              ( ObjectID )
+import Data.Serialize             ( Serialize, encode, decode )
+import Data.Text                  ( Text )
 import Test.Tasty
-import Test.Tasty.QuickCheck ( testProperty )
+import Test.Tasty.QuickCheck      ( testProperty )
 
 main :: IO ()
 main = defaultMain $
@@ -61,8 +68,36 @@ main = defaultMain $
   action pairs = fst $ runState go Map.empty
     where
     go = do
-      let m = Map.fromList pairs
+      let m  = Map.fromList pairs
           st = ST.fromMap m
-      Right tid <- Persist.store' Ram.store st
-      Right st' <- Persist.load' Ram.load tid
+      Right tid <- Persist.store' store st
+      Right st' <- Persist.load' load tid
       return $ m == ST.toMap st'
+
+-- |Error type for RAM storage. Not a lot can go wrong in RAM...
+data RamError = NotFound ObjectID
+              | SerializationError String
+              | ApiError Text
+              deriving ( Show )
+
+instance Error RamError where
+  stableTreeError = ApiError
+
+type StableTreeState = State (Map ByteString ByteString)
+
+store :: (Ord k, Serialize k, Serialize v)
+      => ObjectID -> Fragment k v -> StableTreeState (Maybe RamError)
+store oid frag = do
+  modify $ Map.insert (encode oid) (encode frag)
+  return Nothing
+
+load :: (Ord k, Serialize k, Serialize v)
+     => ObjectID -> StableTreeState (Either RamError (Fragment k v))
+load oid =
+  gets (Map.lookup $ encode oid) >>= \case
+    Nothing -> return $ Left $ NotFound oid
+    Just fragBS ->
+      case decode fragBS of
+        Left err -> return $ Left $ SerializationError err
+        Right frag -> return $ Right frag
+

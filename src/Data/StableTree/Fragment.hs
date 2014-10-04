@@ -38,7 +38,7 @@ data Fragment k v
 
 instance (Ord k, Serialize k, Serialize v) => Serialize (Fragment k v) where
   put (FragmentBranch depth children) = fragPut depth children
-  put (FragmentBottom values) = fragPut 0 values
+  put (FragmentBottom values)         = fragPut 0 values
 
   get =
     getByteString 12 >>= \case

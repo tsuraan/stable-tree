@@ -11,7 +11,8 @@
 -- This module is fairly esoteric. "Data.StableTree" or "Data.StableTree.IO"
 -- are probably what you actually want to be using.
 module Data.StableTree.Tree
-( Tree
+( StableTree(..)
+, Tree
 , Complete
 , Incomplete
 , nextBottom
@@ -26,16 +27,21 @@ module Data.StableTree.Tree
 ) where
 
 import qualified Data.StableTree.Key as Key
-import Data.StableTree.Key ( SomeKey(..), Key, Terminal, Nonterminal )
-import Data.StableTree.Types ( ValueCount, Depth )
 import Data.StableTree.Fragment ( Fragment(..) )
+import Data.StableTree.Key      ( SomeKey(..), Key, Terminal, Nonterminal )
+import Data.StableTree.Types    ( ValueCount, Depth )
 
 import qualified Data.Map as Map
-import Data.ObjectID      ( ObjectID, calculateSerialize )
-import Control.Arrow      ( first, second )
-import Data.Map           ( Map )
-import Data.List          ( intercalate )
-import Data.Serialize     ( Serialize )
+import Control.Arrow  ( first, second )
+import Data.List      ( intercalate )
+import Data.Map       ( Map )
+import Data.ObjectID  ( ObjectID, calculateSerialize )
+import Data.Serialize ( Serialize )
+
+-- | @StableTree@ is the user-visible type that wraps the actual 'Tree'
+-- implementation. All the public functions operate on this type.
+data StableTree k v = StableTree_I (Tree Incomplete k v)
+                    | StableTree_C (Tree Complete k v)
 
 -- |Used to indicate that a 'Tree' is not complete
 data Incomplete 
@@ -490,3 +496,7 @@ iBranch2ObjectID d (sk1, c1, t1) (sk2, c2, t2) ntmap minc =
 -- allows us to calculate the ObjectID.
 witness :: Tree c k v -> Fragment k v -> ()
 witness _ _ = ()
+
+instance (Ord k, Show k, Show v) => Show (StableTree k v) where
+  show (StableTree_I t) = show t
+  show (StableTree_C t) = show t

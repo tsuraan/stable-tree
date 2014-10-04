@@ -18,9 +18,9 @@ module Data.StableTree.Persist
 , store'
 ) where
 
-import Data.StableTree.Fragment   ( Fragment(..) )
 import Data.StableTree.Conversion ( toFragments, fromFragments )
-import Data.StableTree            ( StableTree(..) )
+import Data.StableTree.Fragment   ( Fragment(..) )
+import Data.StableTree.Tree       ( StableTree(..) )
 
 import qualified Data.Map as Map
 import Data.ObjectID  ( ObjectID )

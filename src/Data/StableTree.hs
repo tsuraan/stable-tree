@@ -21,58 +21,56 @@ module Data.StableTree
 ( StableTree(..)
 , fromMap
 , toMap
+, Error(..)
+, load
+, load'
+, store
+, store'
 ) where
 
-import Data.StableTree.Tree
-import Data.StableTree.Types
+import qualified Data.StableTree.Tree as Tree
+import Data.StableTree.Persist ( Error(..), load, load', store, store' )
+import Data.StableTree.Tree    ( StableTree(..) )
 
 import qualified Data.Map as Map
-import Data.Map ( Map )
-import Data.Maybe ( isNothing )
+import Data.Map       ( Map )
+import Data.Maybe     ( isNothing )
 import Data.Serialize ( Serialize )
-
--- | @StableTree@ is the opaque type that wraps the actual 'Tree'
--- implementation. All the public functions operate on this type.
-data StableTree k v = StableTree_I (Tree Incomplete k v)
-                    | StableTree_C (Tree Complete k v)
 
 -- | Convert a 'Data.Map.Map' into a 'StableTree'.
 fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
 fromMap m = go m Map.empty
   where
   go values accum =
-    case nextBottom values of
+    case Tree.nextBottom values of
       Left incomplete ->
         if Map.null accum
           then StableTree_I incomplete
-          else case getKey incomplete of
+          else case Tree.getKey incomplete of
             Just k  -> buildParents accum (Just (k, incomplete)) Map.empty
             Nothing -> buildParents accum Nothing Map.empty
       Right (complete, remain) ->
         if Map.null remain && Map.null accum
           then StableTree_C complete
-          else go remain $ Map.insert (completeKey complete) complete accum
+          else go remain $ Map.insert (Tree.completeKey complete) complete accum
 
   buildParents completes mIncomplete accum =
-    case nextBranch completes mIncomplete of
+    case Tree.nextBranch completes mIncomplete of
       Left incomplete ->
         if Map.null accum
           then StableTree_I incomplete
-          else case getKey incomplete of
+          else case Tree.getKey incomplete of
             Just k  -> buildParents accum (Just (k, incomplete)) Map.empty
             Nothing -> buildParents accum Nothing Map.empty
       Right (complete, remain) ->
         if Map.null remain && Map.null accum && isNothing mIncomplete
           then StableTree_C complete
           else 
-            let accum' = Map.insert (completeKey complete) complete accum
+            let accum' = Map.insert (Tree.completeKey complete) complete accum
             in buildParents remain mIncomplete accum'
 
 -- | Convert a 'StableTree' back into a 'Data.Map.Map'
 toMap :: Ord k => StableTree k v -> Map k v
-toMap (StableTree_I t) = treeContents t
-toMap (StableTree_C t) = treeContents t
+toMap (StableTree_I t) = Tree.treeContents t
+toMap (StableTree_C t) = Tree.treeContents t
 
-instance (Ord k, Show k, Show v) => Show (StableTree k v) where
-  show (StableTree_I t) = show t
-  show (StableTree_C t) = show t

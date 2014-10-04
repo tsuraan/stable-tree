@@ -33,7 +33,6 @@ library
                      , Data.StableTree.Key
                      , Data.StableTree.Tree
                      , Data.StableTree.Persist
-                     , Data.StableTree.Persist.Ram
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.8
@@ -53,12 +52,15 @@ test-suite test-all
   type:                exitcode-stdio-1.0
   main-is:             TestAll.hs
   build-depends:       base >=4.6 && < 4.8
+                     , bytestring
                      , bytestring-arbitrary
                      , cereal
                      , containers
                      , mtl >= 2.2.1
+                     , objectid
                      , QuickCheck >= 2.1
                      , stable-tree
+                     , text
                      , tasty
                      , tasty-quickcheck
   hs-source-dirs:      tests
