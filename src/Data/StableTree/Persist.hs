@@ -58,6 +58,8 @@ store fn a0 tree =
       Left err -> return $ Left err
       Right accum' -> go accum' frags
 
+-- |Alternate store function that acts more like a map than a fold. See 'store'
+-- for details.
 store' :: (Monad m, Error e, Ord k)
        => (ObjectID -> Fragment k v -> m (Maybe e))
        -> StableTree k v
@@ -69,6 +71,8 @@ store' fn = store fn' undefined
       Nothing -> return $ Right oid
       Just err -> return $ Left err
 
+-- |Reverse of 'store'. As with 'store', this acts like a fold, but converts an
+-- 'ObjectID' into a tree, rather than storing a tree.
 load :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
      => (a -> ObjectID -> m (Either e (a, Fragment k v)))
      -> a
@@ -101,6 +105,7 @@ load fn a0 top =
           oids     = map snd $ Map.elems children
       in recur accum' (Map.insert oid frag frags) (oids ++ rest)
 
+-- |Version of 'load' that acts like a map rather than a fold.
 load' :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
       => (ObjectID -> m (Either e (Fragment k v)))
       -> ObjectID

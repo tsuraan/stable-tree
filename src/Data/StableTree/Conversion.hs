@@ -21,6 +21,9 @@ import Data.ObjectID  ( ObjectID )
 import Data.Serialize ( Serialize )
 import Data.Text      ( Text )
 
+-- |Convert a 'StableTree' 'Tree' into a list of storable 'Fragment's. The
+-- resulting list is guaranteed to be in an order where each 'Fragment' will be
+-- seen after all its children.
 toFragments :: Ord k => Tree c k v -> [(ObjectID, Fragment k v)]
 toFragments tree =
   case branchContents tree of
@@ -38,6 +41,11 @@ toFragments tree =
                      Just (_,_,t) -> below ++ toFragments t
       in below' ++ [(getObjectID tree, this)]
 
+-- |Recover a 'Tree' from a single 'Fragment' and a map of the fragments as
+-- returned from 'toFragments'. If the fragment set was already stored, it is
+-- the caller's responsibility to load all the child fragments into a map
+-- (probably involving finding children using the fragmentChildren field of the
+-- Fragment type).
 fromFragments :: (Ord k, Serialize k, Serialize v)
               => Map ObjectID (Fragment k v)
               -> Fragment k v
