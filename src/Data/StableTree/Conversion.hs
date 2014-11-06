@@ -7,6 +7,7 @@
 -- Functions for converting between Tree and Fragment types
 module Data.StableTree.Conversion
 ( toFragments
+, topFragment
 , fromFragments
 ) where
 
@@ -40,6 +41,20 @@ toFragments tree =
                      Nothing -> below
                      Just (_,_,t) -> below ++ toFragments t
       in below' ++ [(getObjectID tree, this)]
+
+-- |Get the root fragment for the given tree. This will give the same value as
+-- `snd . last . toFragments`, but does a lot less work.
+topFragment :: Ord k => Tree c k v -> (Fragment k v)
+topFragment tree =
+  case branchContents tree of
+    Right bottom -> FragmentBottom bottom
+    Left ( completes, mIncomplete ) ->
+      let depth    = getDepth tree
+          cont     = Map.map (second getObjectID) completes
+          cont'    = case mIncomplete of
+                       Nothing -> cont
+                       Just (key,c,t) -> Map.insert key (c,getObjectID t) cont
+      in FragmentBranch depth cont'
 
 -- |Recover a 'Tree' from a single 'Fragment' and a map of the fragments as
 -- returned from 'toFragments'. If the fragment set was already stored, it is
