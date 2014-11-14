@@ -25,9 +25,9 @@ import Data.Text      ( Text )
 -- |Convert a 'StableTree' 'Tree' into a list of storable 'Fragment's. The
 -- resulting list is guaranteed to be in an order where each 'Fragment' will be
 -- seen after all its children.
-toFragments :: Ord k => Tree c k v -> [(ObjectID, Fragment k v)]
+toFragments :: Ord k => StableTree k v -> [(ObjectID, Fragment k v)]
 toFragments tree =
-  case branchContents tree of
+  case stableNodeContents tree of
     Right bottom -> [(getObjectID tree, FragmentBottom bottom)]
     Left ( completes, mIncomplete ) ->
       let depth    = getDepth tree
@@ -44,9 +44,9 @@ toFragments tree =
 
 -- |Get the root fragment for the given tree. This will give the same value as
 -- `snd . last . toFragments`, but does a lot less work.
-topFragment :: Ord k => Tree c k v -> (Fragment k v)
+topFragment :: Ord k => StableTree k v -> (Fragment k v)
 topFragment tree =
-  case branchContents tree of
+  case stableNodeContents tree of
     Right bottom -> FragmentBottom bottom
     Left ( completes, mIncomplete ) ->
       let depth    = getDepth tree
@@ -64,53 +64,34 @@ topFragment tree =
 fromFragments :: (Ord k, Serialize k, Serialize v)
               => Map ObjectID (Fragment k v)
               -> Fragment k v
-              -> Either Text (Either (Tree Incomplete k v)
-                                     (Tree Complete k v))
+              -> Either Text (StableTree k v)
 fromFragments _ (FragmentBottom assocs) =
   case nextBottom assocs of
-    Left i -> Right $ Left i
+    Left i -> Right $ StableTree_I i
     Right (c, remain)
-      | Map.null remain -> Right $ Right c
+      | Map.null remain -> Right $ StableTree_C c
       | otherwise       -> Left "Fragment had leftovers!?"
 fromFragments loaded (FragmentBranch depth children) =
-  case readChildren Map.empty (Map.toAscList children) of
-    Left err -> Left err
-    Right (tmap, minc) ->
-      case nextBranch tmap minc of
-        Left i -> Right $ Left i
-        Right (c, remain)
-          | Map.null remain && getDepth c == depth -> Right $ Right c
-          | otherwise       -> Left "Fragment rebuild failed"
+  
 
+fragsToMap :: Ord k
+           => Map ObjectID (Fragment k v)
+           -> Fragment k v
+           -> Either Text (Map k v)
+fragsToMap loaded = go Map.empty
   where
-  readChildren _ [] = Left "Invalid empty branch"
-  readChildren accum [(key,(cnt,oid))] =
-    case Map.lookup oid loaded of
-      Nothing -> Left $ cannotFind oid
-      Just frag ->
-        case fromFragments loaded frag of
-          Left err                   -> Left err
-          Right (Right c)
-            | getValueCount c == cnt -> Right (Map.insert key c accum, Nothing)
-            | otherwise              -> Left "Value Count Mismatch"
-          Right (Left l)
-            | getValueCount l == cnt -> Right (accum, Just (key, l))
-            | otherwise              -> Left "Value Count Mismatch"
+  go accum (FragmentBottom m) = Right $ Map.union accum m
+  go accum (FragmentBranch _ children) =
+    go' accum $ map snd $ Map.elems children
 
-  readChildren accum ((key,(cnt,oid)):rest) =
-    case Map.lookup oid loaded of
-      Nothing -> Left $ cannotFind oid
-      Just frag ->
-        case fromFragments loaded frag of
-          Left err -> Left err
-          Right (Right c)
-            | getValueCount c == cnt ->
-                readChildren (Map.insert key c accum) rest
-            | otherwise -> Left "Value Count Mismatch"
-          _ -> Left "Got incomplete branch in non-right position"
+  go' accum [] = Right accum
+  go' accum (first:rest) =
+    case Map.lookup first loaded of
+      Nothing -> notFound first
+      Just frag -> do
+        nxt <- go accum frag
+        go' nxt rest
 
-
-  cannotFind oid =
-    Text.append "Failed to find object with ObjectID "
-                (Text.pack $ show oid)
-
+  notFound objectid =
+    Left $ Text.append "Failed to find Fragment with ID "
+                       (Text.pack $ show objectid)
