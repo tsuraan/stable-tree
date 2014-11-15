@@ -38,17 +38,17 @@ treeContents t =
     (Bottom _ _ _ _ _)     -> bottomContents t
     (IBottom0 _ _)         -> bottomContents t
     (IBottom1 _ _ _ _)     -> bottomContents t
-    (Branch _ _ _ _ _ _)   -> foo $ branchContents t
-    (IBranch0 _ _ _)       -> foo $ branchContents t
-    (IBranch1 _ _ _ _)     -> foo $ branchContents t
-    (IBranch2 _ _ _ _ _ _) -> foo $ branchContents t
+    (Branch _ _ _ _ _ _)   -> recur $ branchContents t
+    (IBranch0 _ _ _)       -> recur $ branchContents t
+    (IBranch1 _ _ _ _)     -> recur $ branchContents t
+    (IBranch2 _ _ _ _ _ _) -> recur $ branchContents t
 
   where
-  foo :: Ord k
-      => ( Map k (ValueCount, Tree d Complete k v)
-         , Maybe (k, ValueCount, Tree d Incomplete k v))
-      -> Map k v
-  foo x =
+  recur :: Ord k
+        => ( Map k (ValueCount, Tree d Complete k v)
+           , Maybe (k, ValueCount, Tree d Incomplete k v))
+        -> Map k v
+  recur x =
     case x of
       ( completes, Nothing) ->
         Map.unions $ map (treeContents . snd) $ Map.elems completes
