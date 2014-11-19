@@ -32,9 +32,7 @@ library
   exposed-modules:     Data.StableTree.Types
                      , Data.StableTree.Properties
                      , Data.StableTree.Key
-                     -- , Data.StableTree.Conversion
-                     -- , Data.StableTree.Fragment
-                     -- , Data.StableTree.Types
+                     , Data.StableTree.Conversion
                      , Data.StableTree.Build
                      -- , Data.StableTree.Persist
   -- other-modules:       

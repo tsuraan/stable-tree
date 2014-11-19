@@ -177,8 +177,8 @@ merge before (Just left) [] (Just right) =
 
   where
   mkBottom b l r =
-    let lc            = bottomContents l
-        rc            = bottomContents r
+    let lc            = bottomChildren l
+        rc            = bottomChildren r
         (after, minc) = consumeMap (Map.union lc rc)
     in (b ++ after, minc)
 
@@ -188,10 +188,10 @@ merge before (Just left) [] (Just right) =
            -> Tree (S d) Incomplete k v
            -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
   mkBranch b l r =
-    let (c1, i1)      = branchContents l
+    let (c1, i1)      = branchChildren l
         c1'           = map snd $ Map.elems c1
         i1'           = fmap (\(_,_,x) -> x) i1
-        (c2, i2)      = branchContents r
+        (c2, i2)      = branchChildren r
         c2'           = map snd $ Map.elems c2
         i2'           = fmap (\(_,_,x) -> x) i2
         (lcomp, linc) = merge c1' i1' c2' i2'
@@ -221,8 +221,8 @@ merge before (Just inc) (after:rest) minc =
            -> Maybe (Tree Z Incomplete k v)
            -> ([Tree Z Complete k v], Maybe (Tree Z Incomplete k v))
   mkBottom b i a r m =
-    let ic = bottomContents i
-        ac = bottomContents a
+    let ic = bottomChildren i
+        ac = bottomChildren a
     in case consumeMap (Map.union ic ac) of
         (comp, Nothing) -> (b++comp++r, m)
         (comp, justinc) -> merge (b++comp) justinc r m
@@ -235,10 +235,10 @@ merge before (Just inc) (after:rest) minc =
            -> Maybe (Tree (S d) Incomplete k v)
            -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
   mkBranch b i a r m =
-    let (ci, ii)             = branchContents i
+    let (ci, ii)             = branchChildren i
         ci'                  = map snd $ Map.elems ci
         ii'                  = fmap (\(_,_,x) -> x) ii
-        (ca, ia)             = branchContents a
+        (ca, ia)             = branchChildren a
         ca'                  = map snd $ Map.elems ca
         ia'                  = fmap (\(_,_,x) -> x) ia
         (low_comp, low_minc) = merge ci' ii' ca' ia'

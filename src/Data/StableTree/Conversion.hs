@@ -7,12 +7,12 @@
 -- Functions for converting between Tree and Fragment types
 module Data.StableTree.Conversion
 ( toFragments
-, topFragment
 , fromFragments
 ) where
 
-import Data.StableTree.Fragment
-import Data.StableTree.Tree
+import Data.StableTree.Properties ( stableChildren )
+import Data.StableTree.Types
+import Data.StableTree.Build
 
 import qualified Data.Map as Map
 import qualified Data.Text as Text
@@ -27,34 +27,13 @@ import Data.Text      ( Text )
 -- seen after all its children.
 toFragments :: Ord k => StableTree k v -> [(ObjectID, Fragment k v)]
 toFragments tree =
-  case stableNodeContents tree of
-    Right bottom -> [(getObjectID tree, FragmentBottom bottom)]
-    Left ( completes, mIncomplete ) ->
-      let depth    = getDepth tree
-          cont     = Map.map (second getObjectID) completes
-          cont'    = case mIncomplete of
-                       Nothing -> cont
-                       Just (key,c,t) -> Map.insert key (c,getObjectID t) cont
-          this     = FragmentBranch depth cont'
-          below  = concat $ map (toFragments . snd) $ Map.elems completes
-          below' = case mIncomplete of
-                     Nothing -> below
-                     Just (_,_,t) -> below ++ toFragments t
-      in below' ++ [(getObjectID tree, this)]
-
--- |Get the root fragment for the given tree. This will give the same value as
--- `snd . last . toFragments`, but does a lot less work.
-topFragment :: Ord k => StableTree k v -> (Fragment k v)
-topFragment tree =
-  case stableNodeContents tree of
-    Right bottom -> FragmentBottom bottom
-    Left ( completes, mIncomplete ) ->
-      let depth    = getDepth tree
-          cont     = Map.map (second getObjectID) completes
-          cont'    = case mIncomplete of
-                       Nothing -> cont
-                       Just (key,c,t) -> Map.insert key (c,getObjectID t) cont
-      in FragmentBranch depth cont'
+  let oid    = getObjectID tree
+      frag   = makeFragment tree
+  in case stableChildren tree of
+    Left _ -> [(oid, frag)]
+    Right children ->
+      let below  = concat $ map (toFragments . snd) $ Map.elems children
+      in below ++ [(oid, frag)]
 
 -- |Recover a 'Tree' from a single 'Fragment' and a map of the fragments as
 -- returned from 'toFragments'. If the fragment set was already stored, it is
@@ -65,14 +44,9 @@ fromFragments :: (Ord k, Serialize k, Serialize v)
               => Map ObjectID (Fragment k v)
               -> Fragment k v
               -> Either Text (StableTree k v)
-fromFragments _ (FragmentBottom assocs) =
-  case nextBottom assocs of
-    Left i -> Right $ StableTree_I i
-    Right (c, remain)
-      | Map.null remain -> Right $ StableTree_C c
-      | otherwise       -> Left "Fragment had leftovers!?"
-fromFragments loaded (FragmentBranch depth children) =
-  
+fromFragments loaded top = do
+  contents <- fragsToMap loaded top
+  return $ fromMap contents
 
 fragsToMap :: Ord k
            => Map ObjectID (Fragment k v)
@@ -95,3 +69,6 @@ fragsToMap loaded = go Map.empty
   notFound objectid =
     Left $ Text.append "Failed to find Fragment with ID "
                        (Text.pack $ show objectid)
+
+fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
+fromMap = undefined

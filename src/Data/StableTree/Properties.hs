@@ -3,8 +3,9 @@ module Data.StableTree.Properties
 ( getKey
 , completeKey
 , treeContents
-, bottomContents
-, branchContents
+, stableChildren
+, bottomChildren
+, branchChildren
 ) where
 
 import qualified Data.StableTree.Key as Key
@@ -35,13 +36,13 @@ completeKey (Branch _ _ (k,_,_) _ _ _) = Key.unwrap k
 treeContents :: Ord k => Tree d c k v -> Map k v
 treeContents t =
   case t of
-    (Bottom _ _ _ _ _)     -> bottomContents t
-    (IBottom0 _ _)         -> bottomContents t
-    (IBottom1 _ _ _ _)     -> bottomContents t
-    (Branch _ _ _ _ _ _)   -> recur $ branchContents t
-    (IBranch0 _ _ _)       -> recur $ branchContents t
-    (IBranch1 _ _ _ _)     -> recur $ branchContents t
-    (IBranch2 _ _ _ _ _ _) -> recur $ branchContents t
+    (Bottom _ _ _ _ _)     -> bottomChildren t
+    (IBottom0 _ _)         -> bottomChildren t
+    (IBottom1 _ _ _ _)     -> bottomChildren t
+    (Branch _ _ _ _ _ _)   -> recur $ branchChildren t
+    (IBranch0 _ _ _)       -> recur $ branchChildren t
+    (IBranch1 _ _ _ _)     -> recur $ branchChildren t
+    (IBranch2 _ _ _ _ _ _) -> recur $ branchChildren t
 
   where
   recur :: Ord k
@@ -55,47 +56,51 @@ treeContents t =
       ( completes, Just (_k, _c, iv)) ->
         Map.unions $ treeContents iv:map (treeContents . snd) (Map.elems completes)
 
+stableChildren :: StableTree k v
+               -> Either (Map k v) (Map k (ValueCount, StableTree k v))
+stableChildren = undefined
+
 -- |Non-recursive function to simply get the immediate children of the given
 -- branch. This will either give the key/value map of a Bottom, or the key/tree
 -- map of a non-bottom branch.
-bottomContents :: Ord k
+bottomChildren :: Ord k
                => Tree Z c k v
                -> Map k v
-bottomContents (Bottom _ (k1,v1) (k2,v2) terms (kt,vt)) =
+bottomChildren (Bottom _ (k1,v1) (k2,v2) terms (kt,vt)) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) v1
              $ Map.insert (Key.unwrap k2) v2
              $ Map.insert (Key.fromKey kt) vt
              terms'
   in conts
-bottomContents (IBottom0 _ Nothing) =
+bottomChildren (IBottom0 _ Nothing) =
   Map.empty
-bottomContents (IBottom0 _ (Just (k,v))) =
+bottomChildren (IBottom0 _ (Just (k,v))) =
   Map.singleton (Key.unwrap k) v
-bottomContents (IBottom1 _ (k1,v1) (k2,v2) terms) =
+bottomChildren (IBottom1 _ (k1,v1) (k2,v2) terms) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) v1
              $ Map.insert (Key.unwrap k2) v2
              terms'
   in conts
 
-branchContents :: Ord k
+branchChildren :: Ord k
                => Tree (S d) c k v
                -> ( Map k (ValueCount, Tree d Complete k v)
                   , Maybe (k, ValueCount, Tree d Incomplete k v))
-branchContents (Branch _ _d (k1,c1,v1) (k2,c2,v2) terms (kt,ct,vt)) =
+branchChildren (Branch _ _d (k1,c1,v1) (k2,c2,v2) terms (kt,ct,vt)) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) (c1,v1)
              $ Map.insert (Key.unwrap k2) (c2,v2)
              $ Map.insert (Key.fromKey kt) (ct,vt)
              terms'
   in (conts, Nothing)
-branchContents (IBranch0 _ _d (ik,ic,iv)) =
+branchChildren (IBranch0 _ _d (ik,ic,iv)) =
   (Map.empty, Just (Key.unwrap ik, ic, iv))
-branchContents (IBranch1 _ _d (k1,c1,v1) mIncomplete) =
+branchChildren (IBranch1 _ _d (k1,c1,v1) mIncomplete) =
   ( Map.singleton (Key.unwrap k1) (c1,v1)
   , mIncomplete >>= (\(k,c,v) -> return (Key.unwrap k,c,v)))
-branchContents (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
+branchChildren (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) (c1,v1)
              $ Map.insert (Key.unwrap k2) (c2,v2)
