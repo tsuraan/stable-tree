@@ -15,6 +15,13 @@ module Data.StableTree.Types
 , S
 , Tree(..)
 , Fragment(..)
+, mkBottom
+, mkIBottom0
+, mkIBottom1
+, mkBranch
+, mkIBranch0
+, mkIBranch1
+, mkIBranch2
 , getObjectID
 , getDepth
 , getValueCount
@@ -158,6 +165,53 @@ data Tree d c k v where
            -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
            -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
+
+mkBottom :: (Ord k, Serialize k, Serialize v)
+         => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
+         -> (Key Terminal k, v) -> Tree Z Complete k v
+mkBottom p1 p2 nts t = fixObjectID $ Bottom undefined p1 p2 nts t
+
+mkIBottom0 :: (Ord k, Serialize k, Serialize v)
+           => Maybe (SomeKey k, v) -> Tree Z Incomplete k v
+mkIBottom0 mp = fixObjectID $ IBottom0 undefined mp
+
+mkIBottom1 :: (Ord k, Serialize k, Serialize v)
+           => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
+           -> Tree Z Incomplete k v
+mkIBottom1 p1 p2 nts = fixObjectID $ IBottom1 undefined p1 p2 nts
+
+mkBranch :: (Ord k, Serialize k, Serialize v)
+         => Depth
+         -> (SomeKey k, ValueCount, Tree d Complete k v)
+         -> (SomeKey k, ValueCount, Tree d Complete k v)
+         -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
+         -> (Key Terminal k, ValueCount, Tree d Complete k v)
+         -> Tree (S d) Complete k v
+mkBranch d t1 t2 nts t = fixObjectID $ Branch undefined d t1 t2 nts t
+
+mkIBranch0 :: (Ord k, Serialize k, Serialize v)
+           => Depth
+           -> (SomeKey k, ValueCount, Tree d Incomplete k v)
+           -> Tree (S d) Incomplete k v
+mkIBranch0 d inc = fixObjectID $ IBranch0 undefined d inc
+
+  -- A joining of a single complete and maybe an incomplete
+mkIBranch1 :: (Ord k, Serialize k, Serialize v)
+           => Depth
+           -> (SomeKey k, ValueCount, Tree d Complete k v)
+           -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
+           -> Tree (S d) Incomplete k v
+mkIBranch1 d tup minc = fixObjectID $ IBranch1 undefined d tup minc
+
+  -- A branch that doesn't have a terminal, and that might have an IBranch
+mkIBranch2 :: (Ord k, Serialize k, Serialize v)
+           => Depth
+           -> (SomeKey k, ValueCount, Tree d Complete k v)
+           -> (SomeKey k, ValueCount, Tree d Complete k v)
+           -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
+           -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
+           -> Tree (S d) Incomplete k v
+mkIBranch2  d t1 t2 nts minc = fixObjectID $ IBranch2 undefined d t1 t2 nts minc
 
 -- |A 'Fragment' is a user-visible part of a tree, i.e. a single node in the
 -- tree that can actually be manipulated by a user. This is useful when doing

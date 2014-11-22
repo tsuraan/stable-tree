@@ -64,20 +64,20 @@ nextBottom values =
                 Just ((k,v), Nothing) -> Just (Key.wrap k, v)
                 _ ->
                   error "This is just here to satisfy a broken exhaustion check"
-          b = fixObjectID $ IBottom0 undefined m
+          b = mkIBottom0 m
       in Left b
 
   where
   go f1 f2 accum remain =
     case Map.minViewWithKey remain of
       Nothing ->
-        Left $ fixObjectID $ IBottom1 undefined f1 f2 accum
+        Left $ mkIBottom1 f1 f2 accum
       Just ((k, v), remain') ->
         case Key.wrap k of
           SomeKey_N nonterm ->
             go f1 f2 (Map.insert nonterm v accum) remain'
           SomeKey_T term ->
-            Right (fixObjectID $ Bottom undefined f1 f2 accum (term, v), remain')
+            Right (mkBottom f1 f2 accum (term, v), remain')
 
 consumeBranches :: (Ord k, Serialize k, Serialize v)
                 => Map k (Tree d Complete k v)
@@ -117,12 +117,12 @@ nextBranch branches mIncomplete =
           Empty
         Just (ik, iv) ->
           let tup = (Key.wrap ik, getValueCount iv, iv)
-              b   = fixObjectID $ IBranch0 undefined depth tup
+              b   = mkIBranch0 depth tup
           in Final b
     Just ((k,v), Nothing) ->
       let tup = (Key.wrap k, getValueCount v, v)
           may = wrapMKey mIncomplete
-      in Final $ fixObjectID $ IBranch1 undefined depth tup may
+      in Final $ mkIBranch1 depth tup may
     Just (f1, Just (f2, remain)) ->
       go (wrapKey f1) (wrapKey f2) Map.empty remain
 
@@ -132,10 +132,10 @@ nextBranch branches mIncomplete =
     in case popd of
       Nothing ->
         let may = wrapMKey mIncomplete
-        in Final $ fixObjectID $ IBranch2 undefined depth f1 f2 accum may 
+        in Final $ mkIBranch2 depth f1 f2 accum may 
       Just ((SomeKey_T term,c,v), remain') ->
         let tup = (term, c, v)
-        in More (fixObjectID $ Branch undefined depth f1 f2 accum tup) remain'
+        in More (mkBranch depth f1 f2 accum tup) remain'
       Just ((SomeKey_N nonterm,c,v), remain') ->
         go f1 f2 (Map.insert nonterm (c,v) accum) remain'
 
@@ -169,25 +169,25 @@ merge before minc [] Nothing =
   (before, minc)
 merge before (Just left) [] (Just right) =
   case left of
-    (IBottom0 _ _)         -> mkBottom before left right
-    (IBottom1 _ _ _ _)     -> mkBottom before left right
-    (IBranch0 _ _ _)       -> mkBranch before left right
-    (IBranch1 _ _ _ _)     -> mkBranch before left right
-    (IBranch2 _ _ _ _ _ _) -> mkBranch before left right
+    (IBottom0 _ _)         -> bottom before left right
+    (IBottom1 _ _ _ _)     -> bottom before left right
+    (IBranch0 _ _ _)       -> branch before left right
+    (IBranch1 _ _ _ _)     -> branch before left right
+    (IBranch2 _ _ _ _ _ _) -> branch before left right
 
   where
-  mkBottom b l r =
+  bottom b l r =
     let lc            = bottomChildren l
         rc            = bottomChildren r
         (after, minc) = consumeMap (Map.union lc rc)
     in (b ++ after, minc)
 
-  mkBranch :: (Ord k, Serialize k, Serialize v)
+  branch :: (Ord k, Serialize k, Serialize v)
            => [Tree (S d) Complete k v]
            -> Tree (S d) Incomplete k v
            -> Tree (S d) Incomplete k v
            -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
-  mkBranch b l r =
+  branch b l r =
     let (c1, i1)      = branchChildren l
         c1'           = map snd $ Map.elems c1
         i1'           = fmap (\(_,_,x) -> x) i1
@@ -207,34 +207,34 @@ merge before (Just left) [] (Just right) =
 
 merge before (Just inc) (after:rest) minc =
   case inc of
-    (IBottom0 _ _) -> mkBottom before inc after rest minc
-    (IBottom1 _ _ _ _) -> mkBottom before inc after rest minc
-    (IBranch0 _ _ _) -> mkBranch before inc after rest minc
-    (IBranch1 _ _ _ _) -> mkBranch before inc after rest minc
-    (IBranch2 _ _ _ _ _ _) -> mkBranch before inc after rest minc
+    (IBottom0 _ _) -> bottom before inc after rest minc
+    (IBottom1 _ _ _ _) -> bottom before inc after rest minc
+    (IBranch0 _ _ _) -> branch before inc after rest minc
+    (IBranch1 _ _ _ _) -> branch before inc after rest minc
+    (IBranch2 _ _ _ _ _ _) -> branch before inc after rest minc
   where
-  mkBottom :: (Ord k, Serialize k, Serialize v)
+  bottom :: (Ord k, Serialize k, Serialize v)
            => [Tree Z Complete k v]
            -> Tree Z Incomplete k v
            -> Tree Z Complete k v
            -> [Tree Z Complete k v]
            -> Maybe (Tree Z Incomplete k v)
            -> ([Tree Z Complete k v], Maybe (Tree Z Incomplete k v))
-  mkBottom b i a r m =
+  bottom b i a r m =
     let ic = bottomChildren i
         ac = bottomChildren a
     in case consumeMap (Map.union ic ac) of
         (comp, Nothing) -> (b++comp++r, m)
         (comp, justinc) -> merge (b++comp) justinc r m
 
-  mkBranch :: (Ord k, Serialize k, Serialize v)
+  branch :: (Ord k, Serialize k, Serialize v)
            => [Tree (S d) Complete k v]
            -> Tree (S d) Incomplete k v
            -> Tree (S d) Complete k v
            -> [Tree (S d) Complete k v]
            -> Maybe (Tree (S d) Incomplete k v)
            -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
-  mkBranch b i a r m =
+  branch b i a r m =
     let (ci, ii)             = branchChildren i
         ci'                  = map snd $ Map.elems ci
         ii'                  = fmap (\(_,_,x) -> x) ii
