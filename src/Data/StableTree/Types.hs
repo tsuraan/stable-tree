@@ -352,6 +352,10 @@ instance Eq (StableTree k v) where
   (StableTree_I _) == (StableTree_C _) = False
   (StableTree_C _) == (StableTree_I _) = False
 
+instance Ord (StableTree k v) where
+  compare l r = compare (getObjectID l) (getObjectID r)
+
+deriving instance (Ord k, Show k, Show v) => Show (StableTree k v)
 deriving instance (Ord k, Show k, Show v) => Show (Tree d c k v)
 
 instance (Ord k, Serialize k, Serialize v) => Serialize (Fragment k v) where

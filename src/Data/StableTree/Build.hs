@@ -15,6 +15,7 @@ module Data.StableTree.Build
 , consumeMap
 , nextBottom
 , consumeBranches
+, consumeBranches'
 , nextBranch
 , merge
 ) where
@@ -93,6 +94,20 @@ consumeBranches = go []
         (reverse accum, Just inc)
       More comp remain' ->
         go (comp:accum) remain' minc
+
+consumeBranches' :: (Ord k, Serialize k, Serialize v)
+                 => [Tree d Complete k v]
+                 -> Maybe (Tree d Incomplete k v)
+                 -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
+consumeBranches' completes mincomplete =
+  let ctree = Map.fromList [(completeKey c, c) | c <- completes]
+      mpair = case mincomplete of
+                Nothing -> Nothing
+                Just inc ->
+                  case getKey inc of
+                    Nothing -> Nothing
+                    Just k -> Just (k, inc)
+  in consumeBranches ctree mpair
 
 data NextBranch d k v
   = Empty

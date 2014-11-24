@@ -3,6 +3,7 @@ module Data.StableTree.Properties
 ( getKey
 , completeKey
 , treeContents
+, stableContents
 , stableChildren
 , bottomChildren
 , branchChildren
@@ -55,6 +56,10 @@ treeContents t =
         Map.unions $ map (treeContents . snd) $ Map.elems completes
       ( completes, Just (_k, _c, iv)) ->
         Map.unions $ treeContents iv:map (treeContents . snd) (Map.elems completes)
+
+stableContents :: Ord k => StableTree k v -> Map k v
+stableContents (StableTree_I i) = treeContents i
+stableContents (StableTree_C c) = treeContents c
 
 stableChildren :: StableTree k v
                -> Either (Map k v) (Map k (ValueCount, StableTree k v))

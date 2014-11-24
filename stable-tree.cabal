@@ -34,6 +34,7 @@ library
                      , Data.StableTree.Key
                      , Data.StableTree.Conversion
                      , Data.StableTree.Build
+                     , Data.StableTree.Mutate
                      -- , Data.StableTree.Persist
   -- other-modules:       
   -- other-extensions:    
