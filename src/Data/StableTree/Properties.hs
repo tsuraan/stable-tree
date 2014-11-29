@@ -13,6 +13,7 @@ import qualified Data.StableTree.Key as Key
 import Data.StableTree.Types
 
 import qualified Data.Map as Map
+import Control.Arrow  ( second )
 import Data.Map       ( Map )
 
 -- |Get the key of the first entry in this branch. If the branch is empty,
@@ -61,9 +62,39 @@ stableContents :: Ord k => StableTree k v -> Map k v
 stableContents (StableTree_I i) = treeContents i
 stableContents (StableTree_C c) = treeContents c
 
-stableChildren :: StableTree k v
+stableChildren :: Ord k
+               => StableTree k v
                -> Either (Map k v) (Map k (ValueCount, StableTree k v))
-stableChildren = undefined
+stableChildren tree =
+  case tree of
+    StableTree_I i -> stableChildren' i
+    StableTree_C c -> stableChildren' c
+  where
+  stableChildren' :: Ord k
+                  => Tree d c k v
+                  -> Either (Map k v) (Map k (ValueCount, StableTree k v))
+  stableChildren' t =
+    case t of
+      (Bottom _ _ _ _ _)     -> Left $ bottomChildren t
+      (IBottom0 _ _)         -> Left $ bottomChildren t
+      (IBottom1 _ _ _ _)     -> Left $ bottomChildren t
+      (Branch _ _ _ _ _ _)   -> Right $ branchChildren' t
+      (IBranch0 _ _ _)       -> Right $ branchChildren' t
+      (IBranch1 _ _ _ _)     -> Right $ branchChildren' t
+      (IBranch2 _ _ _ _ _ _) -> Right $ branchChildren' t
+
+  branchChildren' :: Ord k
+                  => Tree (S d) c k v
+                  -> Map k (ValueCount, StableTree k v)
+  branchChildren' t =
+    let (compMap, minc) = branchChildren t
+        stableMap       = Map.map (second StableTree_C) compMap
+        fullMap         = case minc of
+                            Nothing ->
+                              stableMap
+                            Just (k, c, i) ->
+                              Map.insert k (c, StableTree_I i) stableMap
+    in fullMap
 
 -- |Non-recursive function to simply get the immediate children of the given
 -- branch. This will either give the key/value map of a Bottom, or the key/tree
