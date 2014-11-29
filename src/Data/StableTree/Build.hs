@@ -14,21 +14,40 @@ module Data.StableTree.Build
 ( NextBranch(..)
 , consumeMap
 , nextBottom
+, consume
 , consumeBranches
 , consumeBranches'
 , nextBranch
 , merge
+, empty
+, append
+, concat
 ) where
 
 import qualified Data.StableTree.Key as Key
-import Data.StableTree.Key      ( SomeKey(..) )
+import Data.StableTree.Key      ( SomeKey(..), fromKey, unwrap )
 import Data.StableTree.Types
 import Data.StableTree.Properties
 
 import qualified Data.Map as Map
 import Control.Arrow  ( first, second )
 import Data.Map       ( Map )
+import Data.Maybe     ( maybeToList )
+import Data.List      ( sortBy )
+import Data.Ord       ( comparing )
 import Data.Serialize ( Serialize )
+
+import Prelude hiding ( concat )
+
+consume :: (Ord k, Serialize k, Serialize v)
+        => [Tree d Complete k v]
+        -> Maybe (Tree d Incomplete k v)
+        -> StableTree k v
+consume [] Nothing = empty
+consume [c] Nothing = StableTree_C c
+consume [] (Just i) = StableTree_I i
+consume cs minc =
+  (uncurry consume) (consumeBranches' cs minc)
 
 consumeMap :: (Ord k, Serialize k, Serialize v)
            => Map k v
@@ -268,3 +287,125 @@ merge before (Just inc) (after:rest) minc =
         (newcomp, newminc)   = consumeBranches lcomp' linc'
     in merge (b ++ newcomp) newminc r m
 
+empty :: (Ord k, Serialize k, Serialize v) => StableTree k v
+empty = case consumeMap Map.empty of
+          ([], Just inc) -> StableTree_I inc
+          ([complete], Nothing) -> StableTree_C complete
+          _ -> error "an empty tree _does not_ have more than one item"
+
+append :: (Ord k, Serialize k, Serialize v)
+       => StableTree k v -> StableTree k v -> StableTree k v
+append l r = concat [l, r]
+
+concat :: (Ord k, Serialize k, Serialize v)
+       => [StableTree k v] -> StableTree k v
+concat = go [] []
+  where
+  go :: (Ord k, Serialize k, Serialize v)
+     => [Tree Z Complete k v] -> [Tree Z Incomplete k v] -> [StableTree k v]
+     -> StableTree k v
+  go completes incompletes [] = concat' completes incompletes
+  go cs is (StableTree_C c:rest) =
+    case c of
+      Bottom _ _ _ _ _   -> go (c:cs) is rest
+      Branch _ _ _ _ _ _ -> branch c cs is rest
+  go cs is (StableTree_I i:rest) =
+    case i of
+      IBottom0 _ _         -> go cs (i:is) rest
+      IBottom1 _ _ _ _     -> go cs (i:is) rest
+      IBranch0 _ _ _       -> branch i cs is rest
+      IBranch1 _ _ _ _     -> branch i cs is rest
+      IBranch2 _ _ _ _ _ _ -> branch i cs is rest
+
+  branch :: (Ord k, Serialize k, Serialize v)
+         => Tree (S d) c k v
+         -> [Tree Z Complete k v]
+         -> [Tree Z Incomplete k v]
+         -> [StableTree k v]
+         -> StableTree k v
+  branch i cs is rest =
+    let (children, minc) = branchChildren i
+        child'           = map (StableTree_C . snd) $ Map.elems children
+        inc'             = map (\(_, _, t) -> StableTree_I t)
+                               (maybeToList minc)
+    in go cs is (inc' ++ child' ++ rest)
+
+concat' :: (Ord k, Serialize k, Serialize v)
+        => [Tree Z Complete k v]
+        -> [Tree Z Incomplete k v]
+        -> StableTree k v
+concat' completes incompletes =
+  let c_triplets = [ (completeKey c, completeEnd c, Right c) | c <- completes ]
+      i_triplets = sort' [ (k, e, Left i) | (Just k, Just e, i) <- 
+                           [ (getKey i, getEnd i, i) | i <- incompletes ] ]
+      sorted     = sort' $ c_triplets ++ i_triplets
+  in go [] sorted
+
+  where
+  go accum [] =
+    consume accum Nothing
+  go accum [(_, _, Left i)] =
+    consume accum (Just i)
+  go accum (triple:triples) =
+    let (cont, rest) = eatList Map.empty triple triples
+    in case cont of
+        (cs, Nothing) ->
+          go (accum ++ cs) rest
+        (cs, Just incomplete) ->
+          case (getKey incomplete, getEnd incomplete) of
+            (Just ibegin, Just iend) ->
+              go (accum ++ cs) ((ibegin, iend, Left incomplete):rest)
+            _ ->
+              go (accum ++ cs) rest
+  
+  eatList kvmap (_, _, Left i) [] | Map.null kvmap =
+    (([], Just i), [])
+  eatList kvmap (_, _, Right c) [] | Map.null kvmap =
+    (([c], Nothing), [])
+  eatList kvmap (_, _, x) [] =
+    let cont = case x of
+                Left i -> bottomChildren i
+                Right c -> bottomChildren c
+        both = Map.union kvmap cont
+    in ( consumeMap both, [] )
+  eatList kvmap (_, lhi, Right c) rest@((rlow, _, _):_) | Map.null kvmap && lhi < rlow =
+    (([c], Nothing), rest)
+  eatList kvmap (_, lhi, Right c) rest@((rlow, _, _):_) | lhi < rlow =
+    let cont = bottomChildren c
+        both = Map.union kvmap cont
+        nxt  = consumeMap both
+    in ( nxt, rest )
+  eatList kvmap (_, _, x) (nxt:rest) =
+    let cont = case x of
+                Left l  -> bottomChildren l
+                Right r -> bottomChildren r
+        both = Map.union kvmap cont
+    in eatList both nxt rest
+
+  {-
+  go accum [] [(_, _, i)] =
+    consume accum $ Just i
+  go accum [] is =
+    let entire     = Map.unions $ map (bottomChildren . _3) is
+        (cs, minc) = consumeMap entire
+    in consume (accum ++ cs) minc
+    -}
+
+  sort' = sortBy (comparing (\(a,b,_) -> (a,b)))
+
+  completeEnd :: Tree Z Complete k v -> k
+  completeEnd (Bottom _ _ _ _ (tk, _tv)) = fromKey tk
+
+  getEnd :: Tree Z Incomplete k v -> Maybe k
+  getEnd (IBottom0 _ Nothing) =
+    Nothing
+  getEnd (IBottom0 _ (Just (sk, _v))) =
+    Just $ unwrap sk
+  getEnd (IBottom1 _ _ (sk, _v) ntmap) =
+    case Map.toDescList ntmap of
+      []       -> Just $ unwrap sk
+      (k,_v):_ -> Just $ fromKey k
+
+  _1 (x, _, _) = x
+  _2 (_, x, _) = x
+  _3 (_, _, x) = x

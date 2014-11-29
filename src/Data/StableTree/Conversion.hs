@@ -12,7 +12,6 @@ module Data.StableTree.Conversion
 
 import Data.StableTree.Properties ( stableChildren )
 import Data.StableTree.Types
-import Data.StableTree.Build
 
 import qualified Data.Map as Map
 import qualified Data.Text as Text

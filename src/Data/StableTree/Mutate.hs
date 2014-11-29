@@ -2,6 +2,7 @@
 module Data.StableTree.Mutate
 ( insert
 , delete
+, fmap
 ) where
 
 import Data.StableTree.Types
@@ -13,6 +14,9 @@ import Data.Map       ( Map )
 import Data.Serialize ( Serialize )
 import Data.Ord       ( comparing )
 import Data.List      ( sortBy )
+
+import qualified Prelude
+import Prelude hiding ( fmap )
 
 insert :: (Ord k, Serialize k, Serialize v)
        => k -> v -> StableTree k v -> StableTree k v
@@ -86,7 +90,7 @@ mutateBottom search_key mut_fn = \case
   selectNode key branch =
     let (completes, minc)  = branchChildren branch
         assocs             = sortBy (comparing fst) (Map.assocs completes)
-        minc_t             = fmap (\(_, _, t) -> t) minc
+        minc_t             = Prelude.fmap (\(_, _, t) -> t) minc
         test               = \(k, _) -> k <= key
         -- begin_k is every tree whose lowest key is leq to the given key
         (begin_k, after_k) = span test assocs
@@ -103,4 +107,38 @@ mutateBottom search_key mut_fn = \case
         Right ([], t, rest, minc_t)
       (t:rest, _, _) ->                     -- key goes with "t"
         Right (reverse rest, t, after, minc_t)
+
+class SerialFunctor f where
+  fmap :: (Serialize a, Serialize b) => (a -> b) -> f a -> f b
+
+instance (Ord k, Serialize k) => SerialFunctor (Tree d c k) where
+  fmap fn (Bottom _ (k1, v1) (k2, v2) nonterms (kt, vt)) =
+    mkBottom (k1, fn v1) (k2, fn v2) (Map.map fn nonterms) (kt, fn vt)
+  fmap fn (IBottom0 _ mpair) =
+    mkIBottom0 (Prelude.fmap (\(k,v) -> (k, fn v)) mpair)
+  fmap fn (IBottom1 _ (k1, v1) (k2, v2) nonterms) =
+    mkIBottom1 (k1, fn v1) (k2, fn v2) (Map.map fn nonterms)
+  fmap fn (Branch _ d (k1, c1, t1) (k2, c2, t2) nonterms (kt, ct, tt)) =
+    mkBranch d
+             (k1, c1, fmap fn t1)
+             (k2, c2, fmap fn t2)
+             (Map.map (\(c,t) -> (c, fmap fn t)) nonterms)
+             (kt, ct, fmap fn tt)
+  fmap fn (IBranch0 _ d (k1, c1, t1)) =
+    mkIBranch0 d
+               (k1, c1, fmap fn t1)
+  fmap fn (IBranch1 _ d (k1, c1, t1) mtriple) =
+    mkIBranch1 d
+               (k1, c1, fmap fn t1)
+               (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
+  fmap fn (IBranch2 _ d (k1, c1, t1) (k2, c2, t2) nonterms mtriple) =
+    mkIBranch2 d
+               (k1, c1, fmap fn t1)
+               (k2, c2, fmap fn t2)
+               (Map.map (\(c, t) -> (c, fmap fn t)) nonterms)
+               (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
+
+instance (Ord k, Serialize k) => SerialFunctor (StableTree k) where
+  fmap fn (StableTree_I i) = StableTree_I $ fmap fn i
+  fmap fn (StableTree_C c) = StableTree_C $ fmap fn c
 
