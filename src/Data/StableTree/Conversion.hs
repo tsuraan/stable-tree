@@ -9,7 +9,6 @@ module Data.StableTree.Conversion
 ( toFragments
 , fromFragments
 , fragsToMap
-, fromMap
 ) where
 
 import Data.StableTree.Properties ( stableChildren )
@@ -102,5 +101,3 @@ fragsToBottoms frags top =
           _ ->
             Left "Got an Incomplete bottom in a non-terminal position"
 
-fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
-fromMap = (uncurry consume) . consumeMap

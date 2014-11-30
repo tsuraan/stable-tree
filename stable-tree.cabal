@@ -29,7 +29,8 @@ cabal-version:       >=1.10
 --   ghc-options:         -Wall -fllvm
 
 library
-  exposed-modules:     Data.StableTree.Types
+  exposed-modules:     Data.StableTree
+                     , Data.StableTree.Types
                      , Data.StableTree.Properties
                      , Data.StableTree.Key
                      , Data.StableTree.Conversion

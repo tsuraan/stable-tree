@@ -39,6 +39,9 @@ import Data.Serialize ( Serialize )
 
 import Prelude hiding ( concat )
 
+fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
+fromMap = (uncurry consume) . consumeMap
+
 consume :: (Ord k, Serialize k, Serialize v)
         => [Tree d Complete k v]
         -> Maybe (Tree d Incomplete k v)
