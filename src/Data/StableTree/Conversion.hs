@@ -8,6 +8,8 @@
 module Data.StableTree.Conversion
 ( toFragments
 , fromFragments
+, fragsToMap
+, fromMap
 ) where
 
 import Data.StableTree.Properties ( stableChildren )
@@ -44,8 +46,8 @@ fromFragments :: (Ord k, Serialize k, Serialize v)
               -> Fragment k v
               -> Either Text (StableTree k v)
 fromFragments loaded top = do
-  contents <- fragsToMap loaded top
-  return $ fromMap contents
+  (complete, mincomplete) <- fragsToBottoms loaded top
+  return $ consume complete mincomplete
 
 fragsToMap :: Ord k
            => Map ObjectID (Fragment k v)
@@ -68,6 +70,37 @@ fragsToMap loaded = go Map.empty
   notFound objectid =
     Left $ Text.append "Failed to find Fragment with ID "
                        (Text.pack $ show objectid)
+
+fragsToBottoms :: (Ord k, Serialize k, Serialize v)
+               => Map ObjectID (Fragment k v)
+               -> Fragment k v
+               -> Either Text ( [Tree Z Complete k v]
+                              , Maybe (Tree Z Incomplete k v))
+fragsToBottoms _ (FragmentBottom m) = Right $ consumeMap m
+fragsToBottoms frags top =
+  let content = fragmentChildren top
+      asList  = Map.toAscList content
+      oids    = map (snd.snd) asList
+  in go oids
+  where
+  go []  = Right ([], Nothing)
+  go [oid] =
+    case Map.lookup oid frags of
+      Nothing -> Left "Failed to lookup a fragment"
+      Just frag -> fragsToBottoms frags frag
+  go (oid:oids) =
+    case Map.lookup oid frags of
+      Nothing -> Left "Failed to lookup a fragment"
+      Just frag ->
+        case fragsToBottoms frags frag of
+          Left err -> Left err
+          Right (completes, Nothing) ->
+            case go oids of
+              Left err -> Left err
+              Right (nxtC, nxtE) ->
+                Right (completes ++ nxtC, nxtE)
+          _ ->
+            Left "Got an Incomplete bottom in a non-terminal position"
 
 fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
 fromMap = (uncurry consume) . consumeMap
