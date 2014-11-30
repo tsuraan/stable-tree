@@ -11,11 +11,11 @@ module Data.StableTree.Conversion
 ) where
 
 import Data.StableTree.Properties ( stableChildren )
+import Data.StableTree.Build      ( consume, consumeMap )
 import Data.StableTree.Types
 
 import qualified Data.Map as Map
 import qualified Data.Text as Text
-import Control.Arrow  ( second )
 import Data.Map       ( Map )
 import Data.ObjectID  ( ObjectID )
 import Data.Serialize ( Serialize )
@@ -70,4 +70,4 @@ fragsToMap loaded = go Map.empty
                        (Text.pack $ show objectid)
 
 fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
-fromMap = undefined
+fromMap = (uncurry consume) . consumeMap
