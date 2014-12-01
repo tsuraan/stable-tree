@@ -70,6 +70,10 @@ fragsToMap loaded = go Map.empty
     Left $ Text.append "Failed to find Fragment with ID "
                        (Text.pack $ show objectid)
 
+-- |Build a list of the 'Tree Z' instances that come from the given 'Fragment'.
+-- The resulting Trees non-overlapping and ordered such that each Tree's
+-- highest key is lower than the next Tree's lowest key, but illegal Fragments
+-- could break that.
 fragsToBottoms :: (Ord k, Serialize k, Serialize v)
                => Map ObjectID (Fragment k v)
                -> Fragment k v

@@ -166,20 +166,24 @@ data Tree d c k v where
            -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
 
+-- |Helper to calculate the ObjectID for a 'Bottom' instance
 mkBottom :: (Ord k, Serialize k, Serialize v)
          => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
          -> (Key Terminal k, v) -> Tree Z Complete k v
 mkBottom p1 p2 nts t = fixObjectID $ Bottom undefined p1 p2 nts t
 
+-- |Helper to calculate the ObjectID for an 'IBottom0' instance
 mkIBottom0 :: (Ord k, Serialize k, Serialize v)
            => Maybe (SomeKey k, v) -> Tree Z Incomplete k v
 mkIBottom0 mp = fixObjectID $ IBottom0 undefined mp
 
+-- |Helper to calculate the ObjectID for an 'IBottom1' instance
 mkIBottom1 :: (Ord k, Serialize k, Serialize v)
            => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
            -> Tree Z Incomplete k v
 mkIBottom1 p1 p2 nts = fixObjectID $ IBottom1 undefined p1 p2 nts
 
+-- |Helper to calculate the ObjectID for a 'Branch' instance
 mkBranch :: (Ord k, Serialize k, Serialize v)
          => Depth
          -> (SomeKey k, ValueCount, Tree d Complete k v)
@@ -189,13 +193,14 @@ mkBranch :: (Ord k, Serialize k, Serialize v)
          -> Tree (S d) Complete k v
 mkBranch d t1 t2 nts t = fixObjectID $ Branch undefined d t1 t2 nts t
 
+-- |Helper to calculate the ObjectID for an 'IBranch0' instance
 mkIBranch0 :: (Ord k, Serialize k, Serialize v)
            => Depth
            -> (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
 mkIBranch0 d inc = fixObjectID $ IBranch0 undefined d inc
 
-  -- A joining of a single complete and maybe an incomplete
+-- |Helper to calculate the ObjectID for an 'IBranch1' instance
 mkIBranch1 :: (Ord k, Serialize k, Serialize v)
            => Depth
            -> (SomeKey k, ValueCount, Tree d Complete k v)
@@ -203,7 +208,7 @@ mkIBranch1 :: (Ord k, Serialize k, Serialize v)
            -> Tree (S d) Incomplete k v
 mkIBranch1 d tup minc = fixObjectID $ IBranch1 undefined d tup minc
 
-  -- A branch that doesn't have a terminal, and that might have an IBranch
+-- |Helper to calculate the ObjectID for an 'IBranch2' instance
 mkIBranch2 :: (Ord k, Serialize k, Serialize v)
            => Depth
            -> (SomeKey k, ValueCount, Tree d Complete k v)
@@ -228,11 +233,21 @@ data Fragment k v
   deriving( Eq, Ord, Show )
 
 class TreeNode n where
+  -- |Get the ObjectID of a 'Tree' or 'StableTree'
   getObjectID   :: n k v -> ObjectID
+  -- |Get the depth (height?) of a 'Tree' or 'StableTree'
   getDepth      :: n k v -> Depth
+  -- |Get the total number of key/value pairs stored under this 'Tree' or
+  -- 'StableTree'
   getValueCount :: n k v -> ValueCount
+  -- |Do the (expensive) calculation of a 'Tree' or 'StableTree'; generally
+  -- used to do the initial ObjectID calculation when constructing an instance
   calcObjectID  :: (Ord k, Serialize k, Serialize v) => n k v -> ObjectID
+  -- |Recalculate the object's ObjectID and return the updated object;
+  -- pretty much a convenience function around 'calcObjectID'
   fixObjectID   :: (Ord k, Serialize k, Serialize v) => n k v -> n k v
+  -- |Get the 'Fragment' representing this exact 'Tree' node, used for
+  -- persistent storage
   makeFragment  :: Ord k => n k v -> Fragment k v
   -- getFullContents :: n k v -> Map k v
 

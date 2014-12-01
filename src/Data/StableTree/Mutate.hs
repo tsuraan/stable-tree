@@ -6,7 +6,7 @@ module Data.StableTree.Mutate
 ) where
 
 import Data.StableTree.Types
-import Data.StableTree.Build      ( consumeBranches', consumeMap, merge )
+import Data.StableTree.Build      ( consume, consumeBranches', consumeMap, merge )
 import Data.StableTree.Properties ( branchChildren , bottomChildren )
 
 import qualified Data.Map as Map
@@ -18,23 +18,23 @@ import Data.List      ( sortBy )
 import qualified Prelude
 import Prelude hiding ( fmap )
 
+-- |Insert a key/value into a 'StableTree'. If the key exists, its existing
+-- value is overwritten.
 insert :: (Ord k, Serialize k, Serialize v)
        => k -> v -> StableTree k v -> StableTree k v
-insert k v (StableTree_C c) = (uncurry vroom) $ insert' k v c
-insert k v (StableTree_I i) = (uncurry vroom) $ insert' k v i
+insert k v (StableTree_C c) = (uncurry consume) $ insert' k v c
+insert k v (StableTree_I i) = (uncurry consume) $ insert' k v i
 
+-- |Remove a key from the 'StableTree'. If the key is not found, the tree is
+-- returned unchanged.
 delete :: (Ord k, Serialize k, Serialize v)
        => k -> StableTree k v -> StableTree k v
-delete k (StableTree_C c) = (uncurry vroom) $ delete' k c
-delete k (StableTree_I i) = (uncurry vroom) $ delete' k i
+delete k (StableTree_C c) = (uncurry consume) $ delete' k c
+delete k (StableTree_I i) = (uncurry consume) $ delete' k i
 
-vroom :: (Ord k, Serialize k, Serialize v)
-      => [Tree d Complete k v] -> Maybe (Tree d Incomplete k v)
-      -> StableTree k v
-vroom [complete] Nothing   = StableTree_C complete
-vroom [] (Just incomplete) = StableTree_I incomplete
-vroom cs minc = (uncurry vroom) $ consumeBranches' cs minc
-
+-- |Same as 'insert', but works on a 'Tree', and returns a list of completes
+-- and a maybe incomplete instead of returning something that probably can't be
+-- expressed in Haskell's type system.
 insert' :: (Ord k, Serialize k, Serialize v)
         => k
         -> v
@@ -42,12 +42,19 @@ insert' :: (Ord k, Serialize k, Serialize v)
         -> ([Tree d Complete k v], Maybe (Tree d Incomplete k v))
 insert' k v = mutateBottom k $ Map.insert k v
 
+-- |Same as 'delete', but works on a 'Tree', and returns a list of completes
+-- and a maybe incomplete instead of returning something that probably can't be
+-- expressed in Haskell's type system.
 delete' :: (Ord k, Serialize k, Serialize v)
         => k
         -> Tree d c k v
         -> ([Tree d Complete k v], Maybe (Tree d Incomplete k v))
 delete' k = mutateBottom k $ Map.delete k
 
+-- |Find the 'Tree Z' instance that should contain the given key, and call the
+-- given function on its contents. Once that's done, splice the result back
+-- into a new tree, which will probably be really similar to the original, but
+-- have the desired changes applied.
 mutateBottom :: (Ord k, Serialize k, Serialize v)
              => k
              -> (Map k v -> Map k v)
@@ -109,6 +116,10 @@ mutateBottom search_key mut_fn = \case
         Right (reverse rest, t, after, minc_t)
 
 class SerialFunctor f where
+  -- |Same as the 'fmap' instance of 'Functor', but with the restriction that
+  -- the input and output of the mutation function must be 'Serialize'-able.
+  -- Using the real instance would be really cool, but we need that Serialize
+  -- instance.
   fmap :: (Serialize a, Serialize b) => (a -> b) -> f a -> f b
 
 instance (Ord k, Serialize k) => SerialFunctor (Tree d c k) where

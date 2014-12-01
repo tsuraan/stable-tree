@@ -11,17 +11,19 @@
 -- This module is fairly esoteric. "Data.StableTree" or "Data.StableTree.IO"
 -- are probably what you actually want to be using.
 module Data.StableTree.Build
-( NextBranch(..)
-, consumeMap
-, nextBottom
-, consume
-, consumeBranches
-, consumeBranches'
-, nextBranch
-, merge
+( fromMap
 , empty
 , append
 , concat
+
+, consume
+, consumeMap
+, consumeBranches
+, consumeBranches'
+, nextBottom
+, NextBranch(..)
+, nextBranch
+, merge
 ) where
 
 import qualified Data.StableTree.Key as Key
@@ -39,9 +41,58 @@ import Data.Serialize ( Serialize )
 
 import Prelude hiding ( concat )
 
+-- |Convert a simple key/value map into a StableTree
 fromMap :: (Ord k, Serialize k, Serialize v) => Map k v -> StableTree k v
 fromMap = (uncurry consume) . consumeMap
 
+-- |Create a new empty StableTree
+empty :: (Ord k, Serialize k, Serialize v) => StableTree k v
+empty = case consumeMap Map.empty of
+          ([], Just inc) -> StableTree_I inc
+          ([complete], Nothing) -> StableTree_C complete
+          _ -> error "an empty tree _does not_ have more than one item"
+
+-- |Smash two StableTree instances into a single one
+append :: (Ord k, Serialize k, Serialize v)
+       => StableTree k v -> StableTree k v -> StableTree k v
+append l r = concat [l, r]
+
+-- |Smash a whole bunch of StableTree instances into a single one
+concat :: (Ord k, Serialize k, Serialize v)
+       => [StableTree k v] -> StableTree k v
+concat = go [] []
+  where
+  go :: (Ord k, Serialize k, Serialize v)
+     => [Tree Z Complete k v] -> [Tree Z Incomplete k v] -> [StableTree k v]
+     -> StableTree k v
+  go completes incompletes [] = concat' completes incompletes
+  go cs is (StableTree_C c:rest) =
+    case c of
+      Bottom _ _ _ _ _   -> go (c:cs) is rest
+      Branch _ _ _ _ _ _ -> branch c cs is rest
+  go cs is (StableTree_I i:rest) =
+    case i of
+      IBottom0 _ _         -> go cs (i:is) rest
+      IBottom1 _ _ _ _     -> go cs (i:is) rest
+      IBranch0 _ _ _       -> branch i cs is rest
+      IBranch1 _ _ _ _     -> branch i cs is rest
+      IBranch2 _ _ _ _ _ _ -> branch i cs is rest
+
+  branch :: (Ord k, Serialize k, Serialize v)
+         => Tree (S d) c k v
+         -> [Tree Z Complete k v]
+         -> [Tree Z Incomplete k v]
+         -> [StableTree k v]
+         -> StableTree k v
+  branch i cs is rest =
+    let (children, minc) = branchChildren i
+        child'           = map (StableTree_C . snd) $ Map.elems children
+        inc'             = map (\(_, _, t) -> StableTree_I t)
+                               (maybeToList minc)
+    in go cs is (inc' ++ child' ++ rest)
+
+-- |Helper function to convert a complete bunch of Tree instances (of the same
+-- depth) into a single StableTree.
 consume :: (Ord k, Serialize k, Serialize v)
         => [Tree d Complete k v]
         -> Maybe (Tree d Incomplete k v)
@@ -52,6 +103,11 @@ consume [] (Just i) = StableTree_I i
 consume cs minc =
   (uncurry consume) (consumeBranches' cs minc)
 
+-- |Convert a single key/value map into Tree bottom (zero-depth) instances. The
+-- resulting list of Tree instances will never be overlapping, and will be
+-- sorted such that each Tree's highest key is lower than the next Tree's
+-- lowest key. This is not guaranteed by types because i don't think that can
+-- be done in Haskell.
 consumeMap :: (Ord k, Serialize k, Serialize v)
            => Map k v
            -> ([Tree Z Complete k v], Maybe (Tree Z Incomplete k v))
@@ -65,6 +121,43 @@ consumeMap = go []
         if Map.null remain'
           then (reverse (comp:accum), Nothing)
           else go (comp:accum) remain'
+
+-- |Given a mapping from each Tree's first key to that Tree, (and a final
+-- incomplete Tree if desired), this will build the next level of Tree
+-- instances. As with consumeMap, the resulting list of Tree instances will be
+-- non-overlapping and ordered such that each Tree's highest key is smaller
+-- than the next Tree's lowest key.
+consumeBranches :: (Ord k, Serialize k, Serialize v)
+                => Map k (Tree d Complete k v)
+                -> Maybe (k, Tree d Incomplete k v)
+                -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
+consumeBranches = go []
+  where
+  go accum remain minc =
+    case nextBranch remain minc of
+      Empty ->
+        (reverse accum, Nothing) -- I think accum is probably [] here...
+      Final inc ->
+        (reverse accum, Just inc)
+      More comp remain' ->
+        go (comp:accum) remain' minc
+
+-- |Given a simple listing of complete Trees and maybe an incomplete one, this
+-- will build the next level ot Trees. This just builds a map and calls the
+-- previous 'consumeBranches' function, but it's a convenient function to have.
+consumeBranches' :: (Ord k, Serialize k, Serialize v)
+                 => [Tree d Complete k v]
+                 -> Maybe (Tree d Incomplete k v)
+                 -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
+consumeBranches' completes mincomplete =
+  let ctree = Map.fromList [(completeKey c, c) | c <- completes]
+      mpair = case mincomplete of
+                Nothing -> Nothing
+                Just inc ->
+                  case getKey inc of
+                    Nothing -> Nothing
+                    Just k -> Just (k, inc)
+  in consumeBranches ctree mpair
 
 -- |Wrap up some of a k/v map into a 'Tree'. A 'Right' result gives a complete
 -- tree and the map updated to not have the key/values that went into that
@@ -102,44 +195,17 @@ nextBottom values =
           SomeKey_T term ->
             Right (mkBottom f1 f2 accum (term, v), remain')
 
-consumeBranches :: (Ord k, Serialize k, Serialize v)
-                => Map k (Tree d Complete k v)
-                -> Maybe (k, Tree d Incomplete k v)
-                -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
-consumeBranches = go []
-  where
-  go accum remain minc =
-    case nextBranch remain minc of
-      Empty ->
-        (reverse accum, Nothing) -- I think accum is probably [] here...
-      Final inc ->
-        (reverse accum, Just inc)
-      More comp remain' ->
-        go (comp:accum) remain' minc
-
-consumeBranches' :: (Ord k, Serialize k, Serialize v)
-                 => [Tree d Complete k v]
-                 -> Maybe (Tree d Incomplete k v)
-                 -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
-consumeBranches' completes mincomplete =
-  let ctree = Map.fromList [(completeKey c, c) | c <- completes]
-      mpair = case mincomplete of
-                Nothing -> Nothing
-                Just inc ->
-                  case getKey inc of
-                    Nothing -> Nothing
-                    Just k -> Just (k, inc)
-  in consumeBranches ctree mpair
-
+-- | Result of the 'nextBranch' function; values are described below.
 data NextBranch d k v
   = Empty
   | Final (Tree (S d) Incomplete k v)
   | More  (Tree (S d) Complete k v) (Map k (Tree d Complete k v))
 
--- |Generate a parent for a k/Tree map. A 'Right' result gives a complete tree
--- and the map updated to not have the key/trees that went into that tree. A
--- 'Left' result gives an incomplete tree that contains everything that the
--- given map contained.
+-- |Generate a parent for a k/Tree map. An 'Empty' result means that the
+-- function was called with an empty Map and 'Nothing' for an incomplete. A
+-- 'Final' result means that an incomplete Tree was build and there is no more
+-- work to be done. A 'More' result means that a complete Tree was built, and
+-- there is (possibly) more work to do.
 nextBranch :: (Ord k, Serialize k, Serialize v)
            => Map k (Tree d Complete k v)
            -> Maybe (k, Tree d Incomplete k v)
@@ -194,6 +260,12 @@ nextBranch branches mIncomplete =
         then 1 + best
         else error "Depth mismatch in nextBranch"
 
+-- |Tree mutation functions (insert, delete) will generally wind up with a
+-- bunch of Trees that come before the key that was to be changed, and then the
+-- result of updating the relevant Tree, and then a bunch of Trees (and maybe
+-- an incomplete Tree) that come after it. Merge can splice this result back
+-- into a correctly ordered, non-overlapping list of complete Trees and maybe a
+-- final incomplete one.
 merge :: (Ord k, Serialize k, Serialize v)
       => [Tree d Complete k v]
       -> Maybe (Tree d Incomplete k v)
@@ -290,49 +362,6 @@ merge before (Just inc) (after:rest) minc =
         (newcomp, newminc)   = consumeBranches lcomp' linc'
     in merge (b ++ newcomp) newminc r m
 
-empty :: (Ord k, Serialize k, Serialize v) => StableTree k v
-empty = case consumeMap Map.empty of
-          ([], Just inc) -> StableTree_I inc
-          ([complete], Nothing) -> StableTree_C complete
-          _ -> error "an empty tree _does not_ have more than one item"
-
-append :: (Ord k, Serialize k, Serialize v)
-       => StableTree k v -> StableTree k v -> StableTree k v
-append l r = concat [l, r]
-
-concat :: (Ord k, Serialize k, Serialize v)
-       => [StableTree k v] -> StableTree k v
-concat = go [] []
-  where
-  go :: (Ord k, Serialize k, Serialize v)
-     => [Tree Z Complete k v] -> [Tree Z Incomplete k v] -> [StableTree k v]
-     -> StableTree k v
-  go completes incompletes [] = concat' completes incompletes
-  go cs is (StableTree_C c:rest) =
-    case c of
-      Bottom _ _ _ _ _   -> go (c:cs) is rest
-      Branch _ _ _ _ _ _ -> branch c cs is rest
-  go cs is (StableTree_I i:rest) =
-    case i of
-      IBottom0 _ _         -> go cs (i:is) rest
-      IBottom1 _ _ _ _     -> go cs (i:is) rest
-      IBranch0 _ _ _       -> branch i cs is rest
-      IBranch1 _ _ _ _     -> branch i cs is rest
-      IBranch2 _ _ _ _ _ _ -> branch i cs is rest
-
-  branch :: (Ord k, Serialize k, Serialize v)
-         => Tree (S d) c k v
-         -> [Tree Z Complete k v]
-         -> [Tree Z Incomplete k v]
-         -> [StableTree k v]
-         -> StableTree k v
-  branch i cs is rest =
-    let (children, minc) = branchChildren i
-        child'           = map (StableTree_C . snd) $ Map.elems children
-        inc'             = map (\(_, _, t) -> StableTree_I t)
-                               (maybeToList minc)
-    in go cs is (inc' ++ child' ++ rest)
-
 concat' :: (Ord k, Serialize k, Serialize v)
         => [Tree Z Complete k v]
         -> [Tree Z Incomplete k v]
@@ -384,15 +413,6 @@ concat' completes incompletes =
                 Right r -> bottomChildren r
         both = Map.union kvmap cont
     in eatList both nxt rest
-
-  {-
-  go accum [] [(_, _, i)] =
-    consume accum $ Just i
-  go accum [] is =
-    let entire     = Map.unions $ map (bottomChildren . _3) is
-        (cs, minc) = consumeMap entire
-    in consume (accum ++ cs) minc
-    -}
 
   sort' = sortBy (comparing (\(a,b,_) -> (a,b)))
 

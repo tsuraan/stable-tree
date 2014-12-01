@@ -28,7 +28,7 @@ getKey (IBranch0 _ _ (k,_,_))       = Just $ Key.unwrap k
 getKey (IBranch1 _ _ (k,_,_) _)     = Just $ Key.unwrap k
 getKey (IBranch2 _ _ (k,_,_) _ _ _) = Just $ Key.unwrap k
 
--- |Get the key of the fist entry in this complete branch. This function is
+-- |Get the key of the first entry in this complete branch. This function is
 -- total.
 completeKey :: Tree d Complete k v -> k
 completeKey (Bottom _ (k,_) _ _ _)     = Key.unwrap k
@@ -58,10 +58,13 @@ treeContents t =
       ( completes, Just (_k, _c, iv)) ->
         Map.unions $ treeContents iv:map (treeContents . snd) (Map.elems completes)
 
+-- |Convert a 'StableTree' into a normal key/value Map
 stableContents :: Ord k => StableTree k v -> Map k v
 stableContents (StableTree_I i) = treeContents i
 stableContents (StableTree_C c) = treeContents c
 
+-- |Either get the StableTree "children" of a 'StableTree', or get the
+-- key/value map if the tree is already a bottom.
 stableChildren :: Ord k
                => StableTree k v
                -> Either (Map k v) (Map k (ValueCount, StableTree k v))
@@ -120,6 +123,8 @@ bottomChildren (IBottom1 _ (k1,v1) (k2,v2) terms) =
              terms'
   in conts
 
+-- |Get the 'Tree's stored under the given Tree. The Tree type prevents this
+-- function from being called on bottom Trees.
 branchChildren :: Ord k
                => Tree (S d) c k v
                -> ( Map k (ValueCount, Tree d Complete k v)
