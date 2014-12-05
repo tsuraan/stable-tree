@@ -2,8 +2,9 @@
 module Data.StableTree.Properties
 ( getKey
 , completeKey
+, size
 , treeContents
-, stableContents
+, toMap
 , stableChildren
 , bottomChildren
 , branchChildren
@@ -34,6 +35,10 @@ completeKey :: Tree d Complete k v -> k
 completeKey (Bottom _ (k,_) _ _ _)     = Key.unwrap k
 completeKey (Branch _ _ (k,_,_) _ _ _) = Key.unwrap k
 
+-- |Get the total number of k/v pairs in the tree
+size :: StableTree k v -> ValueCount
+size = getValueCount
+
 -- |Convert an entire Tree into a k/v map.
 treeContents :: Ord k => Tree d c k v -> Map k v
 treeContents t =
@@ -59,9 +64,9 @@ treeContents t =
         Map.unions $ treeContents iv:map (treeContents . snd) (Map.elems completes)
 
 -- |Convert a 'StableTree' into a normal key/value Map
-stableContents :: Ord k => StableTree k v -> Map k v
-stableContents (StableTree_I i) = treeContents i
-stableContents (StableTree_C c) = treeContents c
+toMap :: Ord k => StableTree k v -> Map k v
+toMap (StableTree_I i) = treeContents i
+toMap (StableTree_C c) = treeContents c
 
 -- |Either get the StableTree "children" of a 'StableTree', or get the
 -- key/value map if the tree is already a bottom.

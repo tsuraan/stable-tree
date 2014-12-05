@@ -19,16 +19,20 @@
 -- using the dang thing now.
 module Data.StableTree
 ( StableTree
+, fromMap
 , empty
 , insert
 , delete
+, size
 , fmap
 , append
 , concat
+, toMap
 ) where
 
-import Data.StableTree.Build  ( empty, append, concat )
-import Data.StableTree.Mutate ( insert, delete, fmap )
-import Data.StableTree.Types  ( StableTree )
+import Data.StableTree.Build      ( fromMap, empty, append, concat )
+import Data.StableTree.Mutate     ( insert, delete, fmap )
+import Data.StableTree.Properties ( toMap, size )
+import Data.StableTree.Types      ( StableTree )
 
 import Prelude ()

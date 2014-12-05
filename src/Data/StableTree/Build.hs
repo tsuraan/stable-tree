@@ -98,10 +98,22 @@ consume :: (Ord k, Serialize k, Serialize v)
         -> Maybe (Tree d Incomplete k v)
         -> StableTree k v
 consume [] Nothing = empty
-consume [c] Nothing = StableTree_C c
-consume [] (Just i) = StableTree_I i
+consume [c] Nothing = prune $ StableTree_C c
+consume [] (Just i) = prune $ StableTree_I i
 consume cs minc =
   (uncurry consume) (consumeBranches' cs minc)
+
+-- |Helper function to reduce trees to their minimum height by removing root
+-- branches that only have one child.
+prune :: Ord k => StableTree k v -> StableTree k v
+prune st =
+  case stableChildren st of
+    Left _ -> st
+    Right m ->
+      -- This may be too wasteful; we'll find out.
+      case Map.elems m of
+        [(_,c)] -> prune c
+        _ -> st
 
 -- |Convert a single key/value map into Tree bottom (zero-depth) instances. The
 -- resulting list of Tree instances will never be overlapping, and will be
