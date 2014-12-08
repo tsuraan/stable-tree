@@ -7,13 +7,11 @@ module Data.StableTree.Mutate
 
 import Data.StableTree.Types
 import Data.StableTree.Build      ( consume, consumeBranches', consumeMap, merge )
-import Data.StableTree.Properties ( branchChildren , bottomChildren )
+import Data.StableTree.Properties ( bottomChildren, selectNode )
 
 import qualified Data.Map as Map
 import Data.Map       ( Map )
 import Data.Serialize ( Serialize )
-import Data.Ord       ( comparing )
-import Data.List      ( sortBy )
 
 import qualified Prelude
 import Prelude hiding ( fmap )
@@ -87,33 +85,6 @@ mutateBottom search_key mut_fn = \case
                                            after
                                            mincomplete
         in consumeBranches' merged_before merged_minc
-
-  selectNode :: (Ord k, Serialize k, Serialize v)
-             => k
-             -> Tree (S d) c k v
-             -> Either ( [Tree d Complete k v], Tree d Incomplete k v )
-                       ( [Tree d Complete k v], Tree d Complete k v
-                       , [Tree d Complete k v], Maybe (Tree d Incomplete k v) )
-  selectNode key branch =
-    let (completes, minc)  = branchChildren branch
-        assocs             = sortBy (comparing fst) (Map.assocs completes)
-        minc_t             = Prelude.fmap (\(_, _, t) -> t) minc
-        test               = \(k, _) -> k <= key
-        -- begin_k is every tree whose lowest key is leq to the given key
-        (begin_k, after_k) = span test assocs
-        begin              = [ t | (_, (_, t)) <- begin_k ]
-        after              = [ t | (_, (_, t)) <- after_k ]
-    in case (reverse begin, after, minc) of
-      ([], [], Nothing) ->                  -- empty branch
-        error "this is totally unreachable. branches are _not_ empty"
-      ([], [], Just (_, _, i)) ->           -- only choice is the incomplete
-        Left ([], i)
-      (_, [], Just (k, _, t)) | k <= key -> -- key goes with the incomplete
-        Left (begin, t)
-      ([], t:rest, _) ->                    -- key is before everything
-        Right ([], t, rest, minc_t)
-      (t:rest, _, _) ->                     -- key goes with "t"
-        Right (reverse rest, t, after, minc_t)
 
 class SerialFunctor f where
   -- |Same as the 'fmap' instance of 'Functor', but with the restriction that

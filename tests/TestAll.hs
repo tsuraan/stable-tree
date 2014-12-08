@@ -24,8 +24,8 @@ import Test.Tasty.QuickCheck      ( Arbitrary, testProperty, oneof, arbitrary )
 import Test.QuickCheck            ( Gen, elements )
 
 -- import Debug.Trace ( trace )
-trace :: a -> b -> b
-trace _ b = b
+-- trace :: a -> b -> b
+-- trace _ b = b
 
 main :: IO ()
 main = defaultMain $
@@ -44,15 +44,16 @@ main = defaultMain $
   where
 
   int_int :: [(Int,Int)] -> Gen Bool
-  int_int pairs = trace (show pairs) $
+  int_int pairs =
     let m = Map.fromList pairs
         st = ST.fromMap m
     in if m == ST.toMap st
       then do
         and <$> sequence [ test_delete pairs
+                         , return $ test_lookup (Map.toList m) st
                          , test_insert pairs
                          , test_mutate st ]
-      else trace "early fail" $ return False
+      else return False
 
   float_int :: [(Float,Int)] -> Gen Bool
   float_int pairs =
@@ -61,6 +62,7 @@ main = defaultMain $
     in if m == ST.toMap st
       then do
         and <$> sequence [ test_delete pairs
+                         , return $ test_lookup (Map.toList m) st
                          , test_insert pairs
                          , test_mutate st ]
       else return False
@@ -73,20 +75,28 @@ main = defaultMain $
     in if m == ST.toMap st
       then do
         and <$> sequence [ test_delete p'
+                         , return $ test_lookup (Map.toList m) st
                          , test_insert p' ]
       else return False
+
+  test_lookup :: (Ord k, Show k, Eq v, Show v) => [(k,v)] -> StableTree k v -> Bool
+  test_lookup [] _ = True
+  test_lookup ((k,v):rest) t =
+    case ST.lookup k t of
+      Just v' | v' == v -> test_lookup rest t
+      _ -> False
 
   test_delete :: (Show k, Ord k, Serialize k, Show v, Serialize v)
               => [(k,v)]
               -> Gen Bool
   test_delete [] = return True
   test_delete kvs = do
-    delkey <- trace "hi" $ elements (map fst kvs)
-    let m  = trace (show kvs) $ trace (show delkey) $ Map.fromList kvs
+    delkey <- elements (map fst kvs)
+    let m  = Map.fromList kvs
         m' = Map.delete delkey m
         s  = ST.fromMap m
         s' = ST.delete delkey s
-    trace ("a " ++ show s') $ trace ("b " ++ show (ST.fromMap m')) $ trace ("c " ++ show (s' == ST.fromMap m')) $ return (s' == ST.fromMap m')
+    return (s' == ST.fromMap m')
 
   test_insert :: (Show k, Ord k, Serialize k, Show v, Serialize v)
               => [(k,v)]
@@ -122,7 +132,7 @@ main = defaultMain $
 
         delete = do
           let m = ST.toMap accum
-          key <- trace (show m) (elements $ Map.keys m)
+          key <- elements $ Map.keys m
           let val = m ! key
           return $ ST.insert key val $ ST.delete key accum
 

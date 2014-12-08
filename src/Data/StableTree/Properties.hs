@@ -3,11 +3,13 @@ module Data.StableTree.Properties
 ( getKey
 , completeKey
 , size
+, lookup
 , treeContents
 , toMap
 , stableChildren
 , bottomChildren
 , branchChildren
+, selectNode
 ) where
 
 import qualified Data.StableTree.Key as Key
@@ -16,6 +18,8 @@ import Data.StableTree.Types
 import qualified Data.Map as Map
 import Control.Arrow  ( second )
 import Data.Map       ( Map )
+
+import Prelude hiding ( lookup )
 
 -- |Get the key of the first entry in this branch. If the branch is empty,
 -- returns Nothing.
@@ -38,6 +42,31 @@ completeKey (Branch _ _ (k,_,_) _ _ _) = Key.unwrap k
 -- |Get the total number of k/v pairs in the tree
 size :: StableTree k v -> ValueCount
 size = getValueCount
+
+-- |Get the value associated with the given key, or Nothing if there is no
+-- value for the key.
+lookup :: Ord k => k -> StableTree k v -> Maybe v
+lookup key tree =
+  case tree of
+    StableTree_I i -> lookup' key i
+    StableTree_C c -> lookup' key c
+  where
+  lookup' :: Ord k => k -> Tree d c k v -> Maybe v
+  lookup' k t =
+    case t of
+      Bottom _ _ _ _ _     -> Map.lookup k $ bottomChildren t
+      IBottom0 _ _         -> Map.lookup k $ bottomChildren t
+      IBottom1 _ _ _ _     -> Map.lookup k $ bottomChildren t
+      Branch _ _ _ _ _ _   -> lookup'' k t
+      IBranch0 _ _ _       -> lookup'' k t
+      IBranch1 _ _ _ _     -> lookup'' k t
+      IBranch2 _ _ _ _ _ _ -> lookup'' k t
+
+  lookup'' :: Ord k => k -> Tree (S d) c k v -> Maybe v
+  lookup'' k t =
+    case selectNode k t of
+      Left (_, inc) -> lookup' k inc
+      Right (_, comp, _, _) -> lookup' k comp
 
 -- |Convert an entire Tree into a k/v map.
 treeContents :: Ord k => Tree d c k v -> Map k v
@@ -152,4 +181,31 @@ branchChildren (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
              $ Map.insert (Key.unwrap k2) (c2,v2)
              terms'
   in (conts, mIncomplete >>= \(k,c,v) -> return (Key.unwrap k, c, v))
+
+selectNode :: Ord k
+           => k
+           -> Tree (S d) c k v
+           -> Either ( [Tree d Complete k v], Tree d Incomplete k v )
+                     ( [Tree d Complete k v], Tree d Complete k v
+                     , [Tree d Complete k v], Maybe (Tree d Incomplete k v) )
+selectNode key branch =
+  let (completes, minc)  = branchChildren branch
+      assocs             = Map.toAscList completes
+      minc_t             = Prelude.fmap (\(_, _, t) -> t) minc
+      test               = \(k, _) -> k <= key
+      -- begin_k is every tree whose lowest key is leq to the given key
+      (begin_k, after_k) = span test assocs
+      begin              = [ t | (_, (_, t)) <- begin_k ]
+      after              = [ t | (_, (_, t)) <- after_k ]
+  in case (reverse begin, after, minc) of
+    ([], [], Nothing) ->                  -- empty branch
+      error "this is totally unreachable. branches are _not_ empty"
+    ([], [], Just (_, _, i)) ->           -- only choice is the incomplete
+      Left ([], i)
+    (_, [], Just (k, _, t)) | k <= key -> -- key goes with the incomplete
+      Left (begin, t)
+    ([], t:rest, _) ->                    -- key is before everything
+      Right ([], t, rest, minc_t)
+    (t:rest, _, _) ->                     -- key goes with "t"
+      Right (reverse rest, t, after, minc_t)
 
