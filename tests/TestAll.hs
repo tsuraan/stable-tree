@@ -15,7 +15,7 @@ import Control.Applicative        ( (<$>) )
 import Control.Monad.State.Strict ( State, runState, modify, gets )
 import Data.ByteString            ( ByteString )
 import Data.ByteString.Arbitrary  ( ArbByteString(..) )
-import Data.Map                   ( Map, (!) )
+import Data.Map                   ( Map )
 import Data.ObjectID              ( ObjectID )
 import Data.Serialize             ( Serialize, encode, decode )
 import Data.Text                  ( Text )
@@ -47,7 +47,7 @@ main = defaultMain $
   int_int pairs =
     let m = Map.fromList pairs
         st = ST.fromMap m
-    in if m == ST.toMap st
+    in if m == ST.toMap st && Map.keys m == ST.keys st
       then do
         and <$> sequence [ test_delete pairs
                          , return $ test_lookup (Map.toList m) st
@@ -59,7 +59,7 @@ main = defaultMain $
   float_int pairs =
     let m = Map.fromList pairs
         st = ST.fromMap m
-    in if m == ST.toMap st
+    in if m == ST.toMap st && Map.keys m == ST.keys st
       then do
         and <$> sequence [ test_delete pairs
                          , return $ test_lookup (Map.toList m) st
@@ -72,7 +72,7 @@ main = defaultMain $
     let p' = map (first fromABS) pairs
         m = Map.fromList p'
         st = ST.fromMap m
-    in if m == ST.toMap st
+    in if m == ST.toMap st && Map.keys m == ST.keys st
       then do
         and <$> sequence [ test_delete p'
                          , return $ test_lookup (Map.toList m) st
@@ -115,7 +115,7 @@ main = defaultMain $
               => StableTree k v
               -> Gen Bool
   test_mutate tree | ST.size tree == 0 = return True
-  test_mutate tree = mutate (10::Int) (Set.fromList $ Map.keys $ ST.toMap tree) tree tree
+  test_mutate tree = mutate (10::Int) (Set.fromList $ ST.keys tree) tree tree
     where
       mutate 0 _ reference accum = return $ reference == accum
       mutate n keys ref accum = do
@@ -131,9 +131,8 @@ main = defaultMain $
               return $ ST.delete key $ ST.insert key val accum
 
         delete = do
-          let m = ST.toMap accum
-          key <- elements $ Map.keys m
-          let val = m ! key
+          key <- elements $ ST.keys accum
+          let Just val = ST.lookup key accum
           return $ ST.insert key val $ ST.delete key accum
 
   store_int_int :: [(Int,Int)] -> Bool

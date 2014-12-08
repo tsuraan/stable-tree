@@ -4,6 +4,7 @@ module Data.StableTree.Properties
 , completeKey
 , size
 , lookup
+, keys
 , treeContents
 , toMap
 , stableChildren
@@ -67,6 +68,34 @@ lookup key tree =
     case selectNode k t of
       Left (_, inc) -> lookup' k inc
       Right (_, comp, _, _) -> lookup' k comp
+
+-- |Get the keys in the map
+keys :: Ord k => StableTree k v -> [k]
+keys tree =
+  case tree of
+    StableTree_I i -> keys' i
+    StableTree_C c -> keys' c
+  where
+  keys' :: Ord k => Tree d c k v -> [k]
+  keys' t =
+    case t of
+      Bottom _ _ _ _ _     -> Map.keys $ bottomChildren t
+      IBottom0 _ _         -> Map.keys $ bottomChildren t
+      IBottom1 _ _ _ _     -> Map.keys $ bottomChildren t
+      Branch _ _ _ _ _ _   -> keys'' t
+      IBranch0 _ _ _       -> keys'' t
+      IBranch1 _ _ _ _     -> keys'' t
+      IBranch2 _ _ _ _ _ _ -> keys'' t
+
+  keys'' :: Ord k => Tree (S d) c k v -> [k]
+  keys'' t =
+    let (completes, mincomplete) = branchChildren t
+        ckeys = concat [keys' ct | (_, ct) <- Map.elems completes]
+        ikeys = case mincomplete of
+                  Nothing -> []
+                  Just (_, _, it) -> keys' it
+    in ckeys ++ ikeys
+
 
 -- |Convert an entire Tree into a k/v map.
 treeContents :: Ord k => Tree d c k v -> Map k v

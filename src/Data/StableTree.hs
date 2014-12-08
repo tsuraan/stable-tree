@@ -25,6 +25,7 @@ module Data.StableTree
 , delete
 , size
 , lookup
+, keys
 , fmap
 , append
 , concat
@@ -33,7 +34,8 @@ module Data.StableTree
 
 import Data.StableTree.Build      ( fromMap, empty, append, concat )
 import Data.StableTree.Mutate     ( insert, delete, fmap )
-import Data.StableTree.Properties ( toMap, size, lookup )
+import Data.StableTree.Properties ( toMap, size, lookup, keys )
 import Data.StableTree.Types      ( StableTree )
 
 import Prelude ()
+
