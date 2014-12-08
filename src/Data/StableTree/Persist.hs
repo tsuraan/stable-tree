@@ -12,6 +12,7 @@
 -- a user can also implement 'Serialize' for custom data types.
 module Data.StableTree.Persist
 ( Error(..)
+, Fragment(..)
 , load
 , load'
 , store
@@ -19,8 +20,7 @@ module Data.StableTree.Persist
 ) where
 
 import Data.StableTree.Conversion ( toFragments, fromFragments )
-import Data.StableTree.Fragment   ( Fragment(..) )
-import Data.StableTree.Tree       ( StableTree(..) )
+import Data.StableTree.Types      ( StableTree(..), Fragment(..) )
 
 import qualified Data.Map as Map
 import Data.ObjectID  ( ObjectID )
@@ -47,10 +47,7 @@ store :: (Monad m, Error e, Ord k)
       -> a
       -> StableTree k v
       -> m (Either e a)
-store fn a0 tree =
-  case tree of
-    (StableTree_I i) ->  go a0 $ toFragments i
-    (StableTree_C c) ->  go a0 $ toFragments c
+store fn a0 = go a0 . toFragments
   where
   go accum [] = return $ Right accum
   go accum ((fragid, frag):frags) =
@@ -89,10 +86,7 @@ load fn a0 top =
         Just frag ->
           case fromFragments frags frag of
             Left err -> return $ Left (stableTreeError err)
-            Right (Left t) ->
-              return $ Right (accum, StableTree_I t)
-            Right (Right t) ->
-              return $ Right (accum, StableTree_C t)
+            Right t -> return $ Right (accum, t)
 
   where
   recur accum frags [] = return $ Right (accum, frags)

@@ -3,20 +3,22 @@ module Main
 ( main
 ) where
 
-import Data.StableTree ( StableTree )
 import qualified Data.StableTree as ST
--- import Data.StableTree ( Fragment, Error(..) )
+import qualified Data.StableTree.Persist as SP
+import Data.StableTree ( StableTree )
+import Data.StableTree.Persist ( Fragment(..), Error(..) )
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Arrow              ( first )
 import Control.Applicative        ( (<$>) )
--- import Control.Monad.State.Strict ( State, runState, modify, gets )
+import Control.Monad.State.Strict ( State, runState, modify, gets )
+import Data.ByteString            ( ByteString )
 import Data.ByteString.Arbitrary  ( ArbByteString(..) )
-import Data.Map                   ( (!) )
--- import Data.ObjectID              ( ObjectID )
-import Data.Serialize             ( Serialize ) -- , encode, decode )
--- import Data.Text                  ( Text )
+import Data.Map                   ( Map, (!) )
+import Data.ObjectID              ( ObjectID )
+import Data.Serialize             ( Serialize, encode, decode )
+import Data.Text                  ( Text )
 import Test.Tasty
 import Test.Tasty.QuickCheck      ( Arbitrary, testProperty, oneof, arbitrary )
 import Test.QuickCheck            ( Gen, elements )
@@ -33,12 +35,11 @@ main = defaultMain $
     , testProperty "Float/Int" float_int
     , testProperty "ByteString/Int" bytestring_int
     ]
-  {-
   , testGroup "Stored"
     [ testProperty "Int/Int" store_int_int
     , testProperty "Float/Int" store_float_int
     , testProperty "ByteString/Int" store_bytestring_int
-    ] -}
+    ]
   ]
   where
 
@@ -125,7 +126,6 @@ main = defaultMain $
           let val = m ! key
           return $ ST.insert key val $ ST.delete key accum
 
-  {-
   store_int_int :: [(Int,Int)] -> Bool
   store_int_int = action
 
@@ -141,8 +141,8 @@ main = defaultMain $
     go = do
       let m  = Map.fromList pairs
           st = ST.fromMap m
-      Right tid <- ST.store' store st
-      Right st' <- ST.load' load tid
+      Right tid <- SP.store' store st
+      Right st' <- SP.load' load tid
       return $ m == ST.toMap st'
 
 -- |Error type for RAM storage. Not a lot can go wrong in RAM...
@@ -172,5 +172,4 @@ load oid =
         Left err -> return $ Left $ SerializationError err
         Right frag -> return $ Right frag
 
--}
 
