@@ -211,6 +211,9 @@ branchChildren (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
              terms'
   in (conts, mIncomplete >>= \(k,c,v) -> return (Key.unwrap k, c, v))
 
+-- |Choose the child node most likely to hold the given key. If this returns
+-- Left, then the chosen node is the Incomplete node. In the Right case, the
+-- sole Complete node is the best node.
 selectNode :: Ord k
            => k
            -> Tree (S d) c k v
