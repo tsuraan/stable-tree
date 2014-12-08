@@ -5,6 +5,8 @@ module Data.StableTree.Properties
 , size
 , lookup
 , keys
+, elems
+, assocs
 , treeContents
 , toMap
 , stableChildren
@@ -71,29 +73,37 @@ lookup key tree =
 
 -- |Get the keys in the map
 keys :: Ord k => StableTree k v -> [k]
-keys tree =
-  case tree of
-    StableTree_I i -> keys' i
-    StableTree_C c -> keys' c
-  where
-  keys' :: Ord k => Tree d c k v -> [k]
-  keys' t =
-    case t of
-      Bottom _ _ _ _ _     -> Map.keys $ bottomChildren t
-      IBottom0 _ _         -> Map.keys $ bottomChildren t
-      IBottom1 _ _ _ _     -> Map.keys $ bottomChildren t
-      Branch _ _ _ _ _ _   -> keys'' t
-      IBranch0 _ _ _       -> keys'' t
-      IBranch1 _ _ _ _     -> keys'' t
-      IBranch2 _ _ _ _ _ _ -> keys'' t
+keys = map fst . assocs
 
-  keys'' :: Ord k => Tree (S d) c k v -> [k]
-  keys'' t =
+-- |Get the elements stored in the map
+elems :: Ord k => StableTree k v -> [v]
+elems = map snd . assocs
+
+-- |Get the key/value pairs in the map
+assocs :: Ord k => StableTree k v -> [(k, v)]
+assocs tree =
+  case tree of
+    StableTree_I i -> assocs' i
+    StableTree_C c -> assocs' c
+  where
+  assocs' :: Ord k => Tree d c k v -> [(k, v)]
+  assocs' t =
+    case t of
+      Bottom _ _ _ _ _     -> Map.assocs $ bottomChildren t
+      IBottom0 _ _         -> Map.assocs $ bottomChildren t
+      IBottom1 _ _ _ _     -> Map.assocs $ bottomChildren t
+      Branch _ _ _ _ _ _   -> assocs'' t
+      IBranch0 _ _ _       -> assocs'' t
+      IBranch1 _ _ _ _     -> assocs'' t
+      IBranch2 _ _ _ _ _ _ -> assocs'' t
+
+  assocs'' :: Ord k => Tree (S d) c k v -> [(k, v)]
+  assocs'' t =
     let (completes, mincomplete) = branchChildren t
-        ckeys = concat [keys' ct | (_, ct) <- Map.elems completes]
+        ckeys = concat [assocs' ct | (_, ct) <- Map.elems completes]
         ikeys = case mincomplete of
                   Nothing -> []
-                  Just (_, _, it) -> keys' it
+                  Just (_, _, it) -> assocs' it
     in ckeys ++ ikeys
 
 
@@ -222,11 +232,11 @@ selectNode :: Ord k
                      , [Tree d Complete k v], Maybe (Tree d Incomplete k v) )
 selectNode key branch =
   let (completes, minc)  = branchChildren branch
-      assocs             = Map.toAscList completes
+      pairs              = Map.toAscList completes
       minc_t             = Prelude.fmap (\(_, _, t) -> t) minc
       test               = \(k, _) -> k <= key
       -- begin_k is every tree whose lowest key is leq to the given key
-      (begin_k, after_k) = span test assocs
+      (begin_k, after_k) = span test pairs
       begin              = [ t | (_, (_, t)) <- begin_k ]
       after              = [ t | (_, (_, t)) <- after_k ]
   in case (reverse begin, after, minc) of

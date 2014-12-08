@@ -47,7 +47,7 @@ main = defaultMain $
   int_int pairs =
     let m = Map.fromList pairs
         st = ST.fromMap m
-    in if m == ST.toMap st && Map.keys m == ST.keys st
+    in if m == ST.toMap st && Map.keys m == ST.keys st && Map.elems m == ST.elems st
       then do
         and <$> sequence [ test_delete pairs
                          , return $ test_lookup (Map.toList m) st
@@ -59,7 +59,7 @@ main = defaultMain $
   float_int pairs =
     let m = Map.fromList pairs
         st = ST.fromMap m
-    in if m == ST.toMap st && Map.keys m == ST.keys st
+    in if m == ST.toMap st && Map.keys m == ST.keys st && Map.elems m == ST.elems st
       then do
         and <$> sequence [ test_delete pairs
                          , return $ test_lookup (Map.toList m) st
@@ -72,7 +72,7 @@ main = defaultMain $
     let p' = map (first fromABS) pairs
         m = Map.fromList p'
         st = ST.fromMap m
-    in if m == ST.toMap st && Map.keys m == ST.keys st
+    in if m == ST.toMap st && Map.keys m == ST.keys st && Map.elems m == ST.elems st
       then do
         and <$> sequence [ test_delete p'
                          , return $ test_lookup (Map.toList m) st
