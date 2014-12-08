@@ -7,6 +7,7 @@ module Main
 ) where
 
 import Data.StableTree
+import Data.StableTree.Persist
 
 import qualified Data.Map as Map
 import Control.Monad              ( foldM )
