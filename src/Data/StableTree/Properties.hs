@@ -1,4 +1,11 @@
 {-# LANGUAGE GADTs #-}
+-- |
+-- Module    : Data.StableTree
+-- Copyright : Jeremy Groven
+-- License   : BSD3
+--
+-- Various functions for getting interested data about 'StableTree's and
+-- 'Tree's.
 module Data.StableTree.Properties
 ( getKey
 , completeKey
@@ -223,7 +230,11 @@ branchChildren (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
 
 -- |Choose the child node most likely to hold the given key. If this returns
 -- Left, then the chosen node is the Incomplete node. In the Right case, the
--- sole Complete node is the best node.
+-- sole Complete node is the best node. The Complete nodes in the first slot of
+-- the quad are the nodes that came before the chosen node, while the nodes in
+-- the third slot are the nodes that came after. This is useful for changing a
+-- specific node, and then patching things back together with the
+-- `Data.StableTree.Build.merge` function.
 selectNode :: Ord k
            => k
            -> Tree (S d) c k v

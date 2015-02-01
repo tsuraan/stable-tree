@@ -66,11 +66,12 @@ data Z
 -- |Empty type to indicate a Tree with some known height (a branch)
 data S a
 
--- |The actual Rose Tree structure. StableTree is built on one main idea: every
--- 'Key' is either 'Terminal' or 'Nonterminal'. A complete 'Tree' is one whose
--- final element's Key is terminal, and the rest of the Keys are not (exept for
--- two freebies at the beginning to guarantee convergence). A complete tree
--- always has complete children.
+-- |The actual B-Tree variant. StableTree is built on one main idea: every
+-- 'Key' is either 'Terminal' or 'Nonterminal', and every 'Tree' is 'Complete'
+-- or 'Incomplete'. A complete 'Tree' is one whose final element's Key is
+-- terminal, and the rest of the Keys are not (exept for two freebies at the
+-- beginning to guarantee convergence). A complete tree always has complete
+-- children.
 --
 -- If we don't have enough data to generate a complete tree (i.e. we ran out of
 -- elements before hitting a terminal key), then an 'Incomplete' tree is
@@ -166,24 +167,24 @@ data Tree d c k v where
            -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
 
--- |Helper to calculate the ObjectID for a 'Bottom' instance
+-- |Helper to create a 'Bottom' instance with a calculated ObjectID
 mkBottom :: (Ord k, Serialize k, Serialize v)
          => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
          -> (Key Terminal k, v) -> Tree Z Complete k v
 mkBottom p1 p2 nts t = fixObjectID $ Bottom undefined p1 p2 nts t
 
--- |Helper to calculate the ObjectID for an 'IBottom0' instance
+-- |Helper to create an 'IBottom0' instance with a calculated ObjectID
 mkIBottom0 :: (Ord k, Serialize k, Serialize v)
            => Maybe (SomeKey k, v) -> Tree Z Incomplete k v
 mkIBottom0 mp = fixObjectID $ IBottom0 undefined mp
 
--- |Helper to calculate the ObjectID for an 'IBottom1' instance
+-- |Helper to create an 'IBottom1' instance with a calculated ObjectID
 mkIBottom1 :: (Ord k, Serialize k, Serialize v)
            => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
            -> Tree Z Incomplete k v
 mkIBottom1 p1 p2 nts = fixObjectID $ IBottom1 undefined p1 p2 nts
 
--- |Helper to calculate the ObjectID for a 'Branch' instance
+-- |Helper to create a 'Branch' instance with a calculated ObjectID
 mkBranch :: (Ord k, Serialize k, Serialize v)
          => Depth
          -> (SomeKey k, ValueCount, Tree d Complete k v)
@@ -193,14 +194,14 @@ mkBranch :: (Ord k, Serialize k, Serialize v)
          -> Tree (S d) Complete k v
 mkBranch d t1 t2 nts t = fixObjectID $ Branch undefined d t1 t2 nts t
 
--- |Helper to calculate the ObjectID for an 'IBranch0' instance
+-- |Helper to create an 'IBranch0' instance with a calculated ObjectID
 mkIBranch0 :: (Ord k, Serialize k, Serialize v)
            => Depth
            -> (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
 mkIBranch0 d inc = fixObjectID $ IBranch0 undefined d inc
 
--- |Helper to calculate the ObjectID for an 'IBranch1' instance
+-- |Helper to create an 'IBranch1' instance with a calculated ObjectID
 mkIBranch1 :: (Ord k, Serialize k, Serialize v)
            => Depth
            -> (SomeKey k, ValueCount, Tree d Complete k v)
@@ -208,7 +209,7 @@ mkIBranch1 :: (Ord k, Serialize k, Serialize v)
            -> Tree (S d) Incomplete k v
 mkIBranch1 d tup minc = fixObjectID $ IBranch1 undefined d tup minc
 
--- |Helper to calculate the ObjectID for an 'IBranch2' instance
+-- |Helper to create an 'IBranch2' instance with a calculated ObjectID
 mkIBranch2 :: (Ord k, Serialize k, Serialize v)
            => Depth
            -> (SomeKey k, ValueCount, Tree d Complete k v)
@@ -221,7 +222,11 @@ mkIBranch2  d t1 t2 nts minc = fixObjectID $ IBranch2 undefined d t1 t2 nts minc
 -- |A 'Fragment' is a user-visible part of a tree, i.e. a single node in the
 -- tree that can actually be manipulated by a user. This is useful when doing
 -- the work of persisting trees, and its serialize instance is also used to
--- calculate Tree ObjectIDs
+-- calculate Tree ObjectIDs. See `Data.StableTree.Conversion.toFragments` and
+-- `Data.StableTree.Conversion.fromFragments` for functions to convert between
+-- Fragments and Trees. see `Data.StableTree.Persist.store` and
+-- `Data.StableTree.Persist.load` for functions related to storing and
+-- retrieving Fragments.
 data Fragment k v
   = FragmentBranch
     { fragmentDepth    :: Depth

@@ -5,18 +5,17 @@
 -- License   : BSD3
 --
 -- Logic for dealing with the actual persistence of Stable Trees. The key
--- exports here are 'Error', 'Store', 'load', and 'store'. A user needs to
--- implement the 'loadTree', 'loadValue', 'storeTree' and 'storeValue' parts of
--- 'Store', and make an appropriate Error type to report storage errors, and
--- then the 'load' and 'store' functions can just do their thing. If necessary,
--- a user can also implement 'Serialize' for custom data types.
+-- exports here are 'Error', 'load', and 'store'. A user needs to make an
+-- appropriate Error type to report storage errors, and then the 'load' and
+-- 'store' functions can just do their thing. If necessary, a user can also
+-- implement 'Serialize' for custom data types.
 module Data.StableTree.Persist
 ( Error(..)
 , Fragment(..)
-, load
-, load'
 , store
 , store'
+, load
+, load'
 ) where
 
 import Data.StableTree.Conversion ( toFragments, fromFragments )
@@ -69,7 +68,8 @@ store' fn = store fn' undefined
       Just err -> return $ Left err
 
 -- |Reverse of 'store'. As with 'store', this acts like a fold, but converts an
--- 'ObjectID' into a tree, rather than storing a tree.
+-- 'ObjectID' into a tree, rather than storing a tree. This will always build
+-- the tree from the top down.
 load :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
      => (a -> ObjectID -> m (Either e (a, Fragment k v)))
      -> a

@@ -4,7 +4,7 @@
 -- Copyright : Jeremy Groven
 -- License   : BSD3
 --
--- Functions for converting between Tree and Fragment types
+-- Functions for converting between `Tree` and `Fragment` types
 module Data.StableTree.Conversion
 ( toFragments
 , fromFragments
@@ -48,6 +48,9 @@ fromFragments loaded top = do
   (complete, mincomplete) <- fragsToBottoms loaded top
   return $ consume complete mincomplete
 
+-- |Directly convert a bunch of `Fragment`s and a root fragment into a
+-- `Data.Map.Map` instance. Mostly useful for testing the correctness of the
+-- `fromFragments` function.
 fragsToMap :: Ord k
            => Map ObjectID (Fragment k v)
            -> Fragment k v

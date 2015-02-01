@@ -8,14 +8,13 @@
 -- exported by this module are 'nextBottom' and 'nextBranch', which gather
 -- values or lower-level 'Tree's into 'Tree's of the next level.
 --
--- This module is fairly esoteric. "Data.StableTree" or "Data.StableTree.IO"
--- are probably what you actually want to be using.
+-- This module is fairly esoteric. "Data.StableTree" is probably what you
+-- actually want to be using.
 module Data.StableTree.Build
 ( fromMap
 , empty
 , append
 , concat
-
 , consume
 , consumeMap
 , consumeBranches
@@ -27,9 +26,9 @@ module Data.StableTree.Build
 ) where
 
 import qualified Data.StableTree.Key as Key
-import Data.StableTree.Key      ( SomeKey(..), fromKey, unwrap )
+import qualified Data.StableTree.Properties as Properties
+import Data.StableTree.Key   ( SomeKey(..), fromKey, unwrap )
 import Data.StableTree.Types
-import Data.StableTree.Properties
 
 import qualified Data.Map as Map
 import Control.Arrow  ( first, second )
@@ -85,7 +84,7 @@ concat = go [] []
          -> [StableTree k v]
          -> StableTree k v
   branch i cs is rest =
-    let (children, minc) = branchChildren i
+    let (children, minc) = Properties.branchChildren i
         child'           = map (StableTree_C . snd) $ Map.elems children
         inc'             = map (\(_, _, t) -> StableTree_I t)
                                (maybeToList minc)
@@ -107,7 +106,7 @@ consume cs minc =
 -- branches that only have one child.
 prune :: Ord k => StableTree k v -> StableTree k v
 prune st =
-  case stableChildren st of
+  case Properties.stableChildren st of
     Left _ -> st
     Right m ->
       -- This may be too wasteful; we'll find out.
@@ -162,11 +161,11 @@ consumeBranches' :: (Ord k, Serialize k, Serialize v)
                  -> Maybe (Tree d Incomplete k v)
                  -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
 consumeBranches' completes mincomplete =
-  let ctree = Map.fromList [(completeKey c, c) | c <- completes]
+  let ctree = Map.fromList [(Properties.completeKey c, c) | c <- completes]
       mpair = case mincomplete of
                 Nothing -> Nothing
                 Just inc ->
-                  case getKey inc of
+                  case Properties.getKey inc of
                     Nothing -> Nothing
                     Just k -> Just (k, inc)
   in consumeBranches ctree mpair
@@ -298,8 +297,8 @@ merge before (Just left) [] (Just right) =
 
   where
   bottom b l r =
-    let lc            = bottomChildren l
-        rc            = bottomChildren r
+    let lc            = Properties.bottomChildren l
+        rc            = Properties.bottomChildren r
         (after, minc) = consumeMap (Map.union lc rc)
     in (b ++ after, minc)
 
@@ -309,18 +308,18 @@ merge before (Just left) [] (Just right) =
            -> Tree (S d) Incomplete k v
            -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
   branch b l r =
-    let (c1, i1)      = branchChildren l
+    let (c1, i1)      = Properties.branchChildren l
         c1'           = map snd $ Map.elems c1
         i1'           = fmap (\(_,_,x) -> x) i1
-        (c2, i2)      = branchChildren r
+        (c2, i2)      = Properties.branchChildren r
         c2'           = map snd $ Map.elems c2
         i2'           = fmap (\(_,_,x) -> x) i2
         (lcomp, linc) = merge c1' i1' c2' i2'
-        lcomp'        = Map.fromList [(completeKey i,i)|i<-lcomp]
+        lcomp'        = Map.fromList [(Properties.completeKey i,i)|i<-lcomp]
         linc'         = case linc of
                           Nothing -> Nothing
                           Just i ->
-                            case getKey i of
+                            case Properties.getKey i of
                               Nothing -> Nothing
                               Just k  -> Just (k,i)
         (after, minc) = consumeBranches lcomp' linc'
@@ -342,8 +341,8 @@ merge before (Just inc) (after:rest) minc =
            -> Maybe (Tree Z Incomplete k v)
            -> ([Tree Z Complete k v], Maybe (Tree Z Incomplete k v))
   bottom b i a r m =
-    let ic = bottomChildren i
-        ac = bottomChildren a
+    let ic = Properties.bottomChildren i
+        ac = Properties.bottomChildren a
     in case consumeMap (Map.union ic ac) of
         (comp, Nothing) -> (b++comp++r, m)
         (comp, justinc) -> merge (b++comp) justinc r m
@@ -356,19 +355,19 @@ merge before (Just inc) (after:rest) minc =
            -> Maybe (Tree (S d) Incomplete k v)
            -> ([Tree (S d) Complete k v], Maybe (Tree (S d) Incomplete k v))
   branch b i a r m =
-    let (ci, ii)             = branchChildren i
+    let (ci, ii)             = Properties.branchChildren i
         ci'                  = map snd $ Map.elems ci
         ii'                  = fmap (\(_,_,x) -> x) ii
-        (ca, ia)             = branchChildren a
+        (ca, ia)             = Properties.branchChildren a
         ca'                  = map snd $ Map.elems ca
         ia'                  = fmap (\(_,_,x) -> x) ia
         (low_comp, low_minc) = merge ci' ii' ca' ia'
-        lcomp'               = Map.fromList [ (completeKey lc, lc)
+        lcomp'               = Map.fromList [ (Properties.completeKey lc, lc)
                                             | lc <- low_comp]
         linc'                = case low_minc of
                                  Nothing -> Nothing
                                  Just low_inc ->
-                                   case getKey low_inc of
+                                   case Properties.getKey low_inc of
                                      Nothing -> Nothing
                                      Just k  -> Just (k,low_inc)
         (newcomp, newminc)   = consumeBranches lcomp' linc'
@@ -379,9 +378,11 @@ concat' :: (Ord k, Serialize k, Serialize v)
         -> [Tree Z Incomplete k v]
         -> StableTree k v
 concat' completes incompletes =
-  let c_triplets = [ (completeKey c, completeEnd c, Right c) | c <- completes ]
+  let c_triplets = [ (Properties.completeKey c, completeEnd c, Right c)
+                   | c <- completes ]
       i_triplets = sort' [ (k, e, Left i) | (Just k, Just e, i) <- 
-                           [ (getKey i, getEnd i, i) | i <- incompletes ] ]
+                           [ (Properties.getKey i, getEnd i, i)
+                           | i <- incompletes ] ]
       sorted     = sort' $ c_triplets ++ i_triplets
   in go [] sorted
 
@@ -396,7 +397,7 @@ concat' completes incompletes =
         (cs, Nothing) ->
           go (accum ++ cs) rest
         (cs, Just incomplete) ->
-          case (getKey incomplete, getEnd incomplete) of
+          case (Properties.getKey incomplete, getEnd incomplete) of
             (Just ibegin, Just iend) ->
               go (accum ++ cs) ((ibegin, iend, Left incomplete):rest)
             _ ->
@@ -408,21 +409,21 @@ concat' completes incompletes =
     (([c], Nothing), [])
   eatList kvmap (_, _, x) [] =
     let cont = case x of
-                Left i -> bottomChildren i
-                Right c -> bottomChildren c
+                Left i -> Properties.bottomChildren i
+                Right c -> Properties.bottomChildren c
         both = Map.union kvmap cont
     in ( consumeMap both, [] )
   eatList kvmap (_, lhi, Right c) rest@((rlow, _, _):_) | Map.null kvmap && lhi < rlow =
     (([c], Nothing), rest)
   eatList kvmap (_, lhi, Right c) rest@((rlow, _, _):_) | lhi < rlow =
-    let cont = bottomChildren c
+    let cont = Properties.bottomChildren c
         both = Map.union kvmap cont
         nxt  = consumeMap both
     in ( nxt, rest )
   eatList kvmap (_, _, x) (nxt:rest) =
     let cont = case x of
-                Left l  -> bottomChildren l
-                Right r -> bottomChildren r
+                Left l  -> Properties.bottomChildren l
+                Right r -> Properties.bottomChildren r
         both = Map.union kvmap cont
     in eatList both nxt rest
 
