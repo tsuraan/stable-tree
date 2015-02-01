@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                stable-tree
-version:             0.6.0
+version:             0.6.1
 synopsis:            Trees whose branches are resistant to change
 -- description:         
 homepage:            https://github.com/tsuraan/stable-tree
@@ -37,6 +37,7 @@ library
                      , Data.StableTree.Build
                      , Data.StableTree.Mutate
                      , Data.StableTree.Persist
+                     , Data.StableTree.Walk
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.8
