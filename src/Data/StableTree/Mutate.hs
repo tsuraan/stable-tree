@@ -59,13 +59,13 @@ mutateBottom :: (Ord k, Serialize k, Serialize v)
              -> Tree d c k v
              -> ([Tree d Complete k v], Maybe (Tree d Incomplete k v))
 mutateBottom search_key mut_fn = \case
-    bottom@(Bottom _ _ _ _ _)     -> consumeMap $ mut_fn $ bottomChildren bottom
-    bottom@(IBottom0 _ _)         -> consumeMap $ mut_fn $ bottomChildren bottom
-    bottom@(IBottom1 _ _ _ _)     -> consumeMap $ mut_fn $ bottomChildren bottom
-    branch@(Branch _ _ _ _ _ _)   -> mutate search_key mut_fn branch
-    branch@(IBranch0 _ _ _)       -> mutate search_key mut_fn branch
-    branch@(IBranch1 _ _ _ _)     -> mutate search_key mut_fn branch
-    branch@(IBranch2 _ _ _ _ _ _) -> mutate search_key mut_fn branch
+    bottom@(Bottom _ _ _ _)     -> consumeMap $ mut_fn $ bottomChildren bottom
+    bottom@(IBottom0 _)         -> consumeMap $ mut_fn $ bottomChildren bottom
+    bottom@(IBottom1 _ _ _)     -> consumeMap $ mut_fn $ bottomChildren bottom
+    branch@(Branch _ _ _ _ _)   -> mutate search_key mut_fn branch
+    branch@(IBranch0 _ _)       -> mutate search_key mut_fn branch
+    branch@(IBranch1 _ _ _)     -> mutate search_key mut_fn branch
+    branch@(IBranch2 _ _ _ _ _) -> mutate search_key mut_fn branch
   where
 
   mutate :: (Ord k, Serialize k, Serialize v)
@@ -94,27 +94,27 @@ class SerialFunctor f where
   fmap :: (Serialize a, Serialize b) => (a -> b) -> f a -> f b
 
 instance (Ord k, Serialize k) => SerialFunctor (Tree d c k) where
-  fmap fn (Bottom _ (k1, v1) (k2, v2) nonterms (kt, vt)) =
-    mkBottom (k1, fn v1) (k2, fn v2) (Map.map fn nonterms) (kt, fn vt)
-  fmap fn (IBottom0 _ mpair) =
-    mkIBottom0 (Prelude.fmap (\(k,v) -> (k, fn v)) mpair)
-  fmap fn (IBottom1 _ (k1, v1) (k2, v2) nonterms) =
-    mkIBottom1 (k1, fn v1) (k2, fn v2) (Map.map fn nonterms)
-  fmap fn (Branch _ d (k1, c1, t1) (k2, c2, t2) nonterms (kt, ct, tt)) =
-    mkBranch d
+  fmap fn (Bottom (k1, v1) (k2, v2) nonterms (kt, vt)) =
+    Bottom (k1, fn v1) (k2, fn v2) (Map.map fn nonterms) (kt, fn vt)
+  fmap fn (IBottom0 mpair) =
+    IBottom0 (Prelude.fmap (\(k,v) -> (k, fn v)) mpair)
+  fmap fn (IBottom1 (k1, v1) (k2, v2) nonterms) =
+    IBottom1 (k1, fn v1) (k2, fn v2) (Map.map fn nonterms)
+  fmap fn (Branch d (k1, c1, t1) (k2, c2, t2) nonterms (kt, ct, tt)) =
+    Branch d
              (k1, c1, fmap fn t1)
              (k2, c2, fmap fn t2)
              (Map.map (\(c,t) -> (c, fmap fn t)) nonterms)
              (kt, ct, fmap fn tt)
-  fmap fn (IBranch0 _ d (k1, c1, t1)) =
-    mkIBranch0 d
+  fmap fn (IBranch0 d (k1, c1, t1)) =
+    IBranch0 d
                (k1, c1, fmap fn t1)
-  fmap fn (IBranch1 _ d (k1, c1, t1) mtriple) =
-    mkIBranch1 d
+  fmap fn (IBranch1 d (k1, c1, t1) mtriple) =
+    IBranch1 d
                (k1, c1, fmap fn t1)
                (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
-  fmap fn (IBranch2 _ d (k1, c1, t1) (k2, c2, t2) nonterms mtriple) =
-    mkIBranch2 d
+  fmap fn (IBranch2 d (k1, c1, t1) (k2, c2, t2) nonterms mtriple) =
+    IBranch2 d
                (k1, c1, fmap fn t1)
                (k2, c2, fmap fn t2)
                (Map.map (\(c, t) -> (c, fmap fn t)) nonterms)

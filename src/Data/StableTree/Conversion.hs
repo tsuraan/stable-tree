@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, LambdaCase, GADTs #-}
 -- |
 -- Module    : Data.StableTree.Conversion
 -- Copyright : Jeremy Groven
@@ -6,34 +6,88 @@
 --
 -- Functions for converting between `Tree` and `Fragment` types
 module Data.StableTree.Conversion
-( toFragments
+( Fragment(..)
+, toFragments
 , fromFragments
 , fragsToMap
 ) where
 
-import Data.StableTree.Properties ( stableChildren )
+import Data.StableTree.Properties ( bottomChildren, branchChildren )
 import Data.StableTree.Build      ( consume, consumeMap )
 import Data.StableTree.Types
 
 import qualified Data.Map as Map
 import qualified Data.Text as Text
-import Data.Map       ( Map )
-import Data.ObjectID  ( ObjectID )
-import Data.Serialize ( Serialize )
-import Data.Text      ( Text )
+import Control.Applicative ( (<$>) )
+import Control.Monad       ( replicateM )
+import Data.Map            ( Map )
+import Data.ObjectID       ( ObjectID, calculateSerialize )
+import Data.Serialize      ( Serialize, get, put )
+import Data.Serialize.Get  ( Get, getByteString )
+import Data.Serialize.Put  ( Put, putByteString )
+import Data.Text           ( Text )
+
+-- |A 'Fragment' is a user-visible part of a tree, i.e. a single node in the
+-- tree that can actually be manipulated by a user. This is useful when doing
+-- the work of persisting trees, and its serialize instance is also used to
+-- calculate Tree ObjectIDs. See `Data.StableTree.Conversion.toFragments` and
+-- `Data.StableTree.Conversion.fromFragments` for functions to convert between
+-- Fragments and Trees. see `Data.StableTree.Persist.store` and
+-- `Data.StableTree.Persist.load` for functions related to storing and
+-- retrieving Fragments.
+data Fragment k v
+  = FragmentBranch
+    { fragmentObjectID :: ObjectID
+    , fragmentDepth    :: Depth
+    , fragmentChildren :: Map k (ValueCount, ObjectID)
+    }
+  | FragmentBottom
+    { fragmentObjectID :: ObjectID
+    , fragmentMap      :: Map k v
+    }
+  deriving( Eq, Ord, Show )
 
 -- |Convert a 'StableTree' 'Tree' into a list of storable 'Fragment's. The
 -- resulting list is guaranteed to be in an order where each 'Fragment' will be
 -- seen after all its children.
-toFragments :: Ord k => StableTree k v -> [(ObjectID, Fragment k v)]
-toFragments tree =
-  let oid    = getObjectID tree
-      frag   = makeFragment tree
-  in case stableChildren tree of
-    Left _ -> [(oid, frag)]
-    Right children ->
-      let below  = concat $ map (toFragments . snd) $ Map.elems children
-      in below ++ [(oid, frag)]
+toFragments :: (Ord k, Serialize k, Serialize v)
+            => StableTree k v -> [Fragment k v]
+toFragments (StableTree_I i) = snd $ toFragments' i
+toFragments (StableTree_C c) = snd $ toFragments' c
+
+toFragments' :: (Ord k, Serialize k, Serialize v)
+             => Tree d c k v -> (Fragment k v, [Fragment k v])
+toFragments' b@(Bottom{})   = bottomToFragments b
+toFragments' b@(IBottom0{}) = bottomToFragments b
+toFragments' b@(IBottom1{}) = bottomToFragments b
+toFragments' b@(Branch{})   = branchToFragments b
+toFragments' b@(IBranch0{}) = branchToFragments b
+toFragments' b@(IBranch1{}) = branchToFragments b
+toFragments' b@(IBranch2{}) = branchToFragments b
+
+bottomToFragments :: (Ord k, Serialize k, Serialize v)
+                  => Tree Z c k v -> (Fragment k v, [Fragment k v])
+bottomToFragments tree =
+  let children = bottomChildren tree
+      frag     = fixFragmentID $ FragmentBottom undefined children
+  in (frag, [frag])
+
+branchToFragments :: (Ord k, Serialize k, Serialize v)
+                  => Tree (S d) c k v -> (Fragment k v, [Fragment k v])
+branchToFragments tree =
+  let (completes, mInc) = branchChildren tree
+      compFrags         = Map.map (\(v, t) -> (v, toFragments' t)) completes
+      allFrags          = case mInc of
+                            Nothing ->
+                              compFrags
+                            Just (k, v, t) ->
+                              Map.insert k (v, toFragments' t) compFrags
+      getChildPair     = \(v, (f, _)) -> (v, fragmentObjectID f)
+      children         = Map.map getChildPair allFrags
+      cumulative       = concat $ map (snd . snd) $ Map.elems allFrags
+      depth            = getDepth tree
+      frag             = fixFragmentID $ FragmentBranch undefined depth children
+  in (frag, cumulative ++ [frag])
 
 -- |Recover a 'Tree' from a single 'Fragment' and a map of the fragments as
 -- returned from 'toFragments'. If the fragment set was already stored, it is
@@ -57,8 +111,8 @@ fragsToMap :: Ord k
            -> Either Text (Map k v)
 fragsToMap loaded = go Map.empty
   where
-  go accum (FragmentBottom m) = Right $ Map.union accum m
-  go accum (FragmentBranch _ children) =
+  go accum (FragmentBottom _ m) = Right $ Map.union accum m
+  go accum (FragmentBranch _ _ children) =
     go' accum $ map snd $ Map.elems children
 
   go' accum [] = Right accum
@@ -82,7 +136,7 @@ fragsToBottoms :: (Ord k, Serialize k, Serialize v)
                -> Fragment k v
                -> Either Text ( [Tree Z Complete k v]
                               , Maybe (Tree Z Incomplete k v))
-fragsToBottoms _ (FragmentBottom m) = Right $ consumeMap m
+fragsToBottoms _ (FragmentBottom _ m) = Right $ consumeMap m
 fragsToBottoms frags top =
   let content = fragmentChildren top
       asList  = Map.toAscList content
@@ -107,4 +161,49 @@ fragsToBottoms frags top =
                 Right (completes ++ nxtC, nxtE)
           _ ->
             Left "Got an Incomplete bottom in a non-terminal position"
+
+instance (Ord k, Serialize k, Serialize v) => Serialize (Fragment k v) where
+  put frag =
+    case frag of
+      (FragmentBranch _ depth children) -> fragPut depth children
+      (FragmentBottom _ values)         -> fragPut 0 values
+    where
+    fragPut :: (Serialize k, Serialize v) => Depth -> Map k v -> Put
+    fragPut depth items = do
+      putByteString "stable-tree\0"
+      put depth
+      put $ Map.size items
+      mapM_ (\(k,v) -> put k >> put v) (Map.toAscList items)
+
+  get =
+    getByteString 12 >>= \case
+      "stable-tree\0" ->
+        get >>= \case
+          0 -> do
+            count <- get
+            children <- Map.fromList <$> replicateM count getPair
+            -- Having to create a broken fragment, serialize it, and then
+            -- calculate that bytestring's ObjectID is gross, when we already
+            -- have the serialized form of the fragment, but I have no idea how
+            -- to access the underlying bytestring. This should be correct, but
+            -- it's not very efficient.
+            return $ fixFragmentID $ FragmentBottom undefined children
+          depth -> do
+            count <- get
+            children <- Map.fromList <$> replicateM count getPair
+            return $ fixFragmentID $ FragmentBranch undefined depth children
+      _ -> fail "Not a serialized Fragment"
+    where
+    getPair :: (Serialize k, Serialize v) => Get (k,v)
+    getPair = do
+      k <- get
+      v <- get
+      return (k,v)
+
+fixFragmentID :: (Ord k, Serialize k, Serialize v)
+              => Fragment k v -> Fragment k v
+fixFragmentID frag@(FragmentBottom _ children) =
+  FragmentBottom (calculateSerialize frag) children
+fixFragmentID frag@(FragmentBranch _ depth children) =
+  FragmentBranch (calculateSerialize frag) depth children
 

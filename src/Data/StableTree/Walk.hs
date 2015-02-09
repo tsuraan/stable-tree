@@ -34,13 +34,13 @@ foldM fn a0 tree =
          => (a -> k -> v -> m a) -> a -> Tree d c k v -> m a
   foldM' f accum t =
     case t of
-      Bottom _ _ _ _ _     -> bottom f accum t
-      IBottom0 _ _         -> bottom f accum t
-      IBottom1 _ _ _ _     -> bottom f accum t
-      Branch _ _ _ _ _ _   -> branch f accum t
-      IBranch0 _ _ _       -> branch f accum t
-      IBranch1 _ _ _ _     -> branch f accum t
-      IBranch2 _ _ _ _ _ _ -> branch f accum t
+      Bottom _ _ _ _     -> bottom f accum t
+      IBottom0 _         -> bottom f accum t
+      IBottom1 _ _ _     -> bottom f accum t
+      Branch _ _ _ _ _   -> branch f accum t
+      IBranch0 _ _       -> branch f accum t
+      IBranch1 _ _ _     -> branch f accum t
+      IBranch2 _ _ _ _ _ -> branch f accum t
 
   bottom :: (Monad m, Ord k)
          => (a -> k -> v -> m a) -> a -> Tree Z c k v -> m a
@@ -70,13 +70,13 @@ foldr fn a0 tree =
   foldr' :: Ord k => (k -> v -> a -> a) -> a -> Tree d c k v -> a
   foldr' f accum t =
     case t of
-      Bottom _ _ _ _ _     -> bottom f accum t
-      IBottom0 _ _         -> bottom f accum t
-      IBottom1 _ _ _ _     -> bottom f accum t
-      Branch _ _ _ _ _ _   -> branch f accum t
-      IBranch0 _ _ _       -> branch f accum t
-      IBranch1 _ _ _ _     -> branch f accum t
-      IBranch2 _ _ _ _ _ _ -> branch f accum t
+      Bottom _ _ _ _     -> bottom f accum t
+      IBottom0 _         -> bottom f accum t
+      IBottom1 _ _ _     -> bottom f accum t
+      Branch _ _ _ _ _   -> branch f accum t
+      IBranch0 _ _       -> branch f accum t
+      IBranch1 _ _ _     -> branch f accum t
+      IBranch2 _ _ _ _ _ -> branch f accum t
 
   bottom :: Ord k => (k -> v -> a -> a) -> a -> Tree Z c k v -> a
   bottom f accum t =
@@ -105,13 +105,13 @@ foldl fn a0 tree =
   foldl' :: Ord k => (a -> k -> v -> a) -> a -> Tree d c k v -> a
   foldl' f accum t =
     case t of
-      Bottom _ _ _ _ _     -> bottom f accum t
-      IBottom0 _ _         -> bottom f accum t
-      IBottom1 _ _ _ _     -> bottom f accum t
-      Branch _ _ _ _ _ _   -> branch f accum t
-      IBranch0 _ _ _       -> branch f accum t
-      IBranch1 _ _ _ _     -> branch f accum t
-      IBranch2 _ _ _ _ _ _ -> branch f accum t
+      Bottom _ _ _ _     -> bottom f accum t
+      IBottom0 _         -> bottom f accum t
+      IBottom1 _ _ _     -> bottom f accum t
+      Branch _ _ _ _ _   -> branch f accum t
+      IBranch0 _ _       -> branch f accum t
+      IBranch1 _ _ _     -> branch f accum t
+      IBranch2 _ _ _ _ _ -> branch f accum t
 
   bottom :: Ord k => (a -> k -> v -> a) -> a -> Tree Z c k v -> a
   bottom f accum t =

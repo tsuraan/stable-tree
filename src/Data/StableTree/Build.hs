@@ -67,15 +67,15 @@ concat = go [] []
   go completes incompletes [] = concat' completes incompletes
   go cs is (StableTree_C c:rest) =
     case c of
-      Bottom _ _ _ _ _   -> go (c:cs) is rest
-      Branch _ _ _ _ _ _ -> branch c cs is rest
+      Bottom _ _ _ _   -> go (c:cs) is rest
+      Branch _ _ _ _ _ -> branch c cs is rest
   go cs is (StableTree_I i:rest) =
     case i of
-      IBottom0 _ _         -> go cs (i:is) rest
-      IBottom1 _ _ _ _     -> go cs (i:is) rest
-      IBranch0 _ _ _       -> branch i cs is rest
-      IBranch1 _ _ _ _     -> branch i cs is rest
-      IBranch2 _ _ _ _ _ _ -> branch i cs is rest
+      IBottom0 _         -> go cs (i:is) rest
+      IBottom1 _ _ _     -> go cs (i:is) rest
+      IBranch0 _ _       -> branch i cs is rest
+      IBranch1 _ _ _     -> branch i cs is rest
+      IBranch2 _ _ _ _ _ -> branch i cs is rest
 
   branch :: (Ord k, Serialize k, Serialize v)
          => Tree (S d) c k v
@@ -191,20 +191,20 @@ nextBottom values =
                 Just ((k,v), Nothing) -> Just (Key.wrap k, v)
                 _ ->
                   error "This is just here to satisfy a broken exhaustion check"
-          b = mkIBottom0 m
+          b = IBottom0 m
       in Left b
 
   where
   go f1 f2 accum remain =
     case Map.minViewWithKey remain of
       Nothing ->
-        Left $ mkIBottom1 f1 f2 accum
+        Left $ IBottom1 f1 f2 accum
       Just ((k, v), remain') ->
         case Key.wrap k of
           SomeKey_N nonterm ->
             go f1 f2 (Map.insert nonterm v accum) remain'
           SomeKey_T term ->
-            Right (mkBottom f1 f2 accum (term, v), remain')
+            Right (Bottom f1 f2 accum (term, v), remain')
 
 -- | Result of the 'nextBranch' function; values are described below.
 data NextBranch d k v
@@ -231,12 +231,12 @@ nextBranch branches mIncomplete =
           Empty
         Just (ik, iv) ->
           let tup = (Key.wrap ik, getValueCount iv, iv)
-              b   = mkIBranch0 depth tup
+              b   = IBranch0 depth tup
           in Final b
     Just ((k,v), Nothing) ->
       let tup = (Key.wrap k, getValueCount v, v)
           may = wrapMKey mIncomplete
-      in Final $ mkIBranch1 depth tup may
+      in Final $ IBranch1 depth tup may
     Just (f1, Just (f2, remain)) ->
       go (wrapKey f1) (wrapKey f2) Map.empty remain
 
@@ -246,10 +246,10 @@ nextBranch branches mIncomplete =
     in case popd of
       Nothing ->
         let may = wrapMKey mIncomplete
-        in Final $ mkIBranch2 depth f1 f2 accum may 
+        in Final $ IBranch2 depth f1 f2 accum may 
       Just ((SomeKey_T term,c,v), remain') ->
         let tup = (term, c, v)
-        in More (mkBranch depth f1 f2 accum tup) remain'
+        in More (Branch depth f1 f2 accum tup) remain'
       Just ((SomeKey_N nonterm,c,v), remain') ->
         go f1 f2 (Map.insert nonterm (c,v) accum) remain'
 
@@ -289,11 +289,11 @@ merge before minc [] Nothing =
   (before, minc)
 merge before (Just left) [] (Just right) =
   case left of
-    (IBottom0 _ _)         -> bottom before left right
-    (IBottom1 _ _ _ _)     -> bottom before left right
-    (IBranch0 _ _ _)       -> branch before left right
-    (IBranch1 _ _ _ _)     -> branch before left right
-    (IBranch2 _ _ _ _ _ _) -> branch before left right
+    (IBottom0 _)         -> bottom before left right
+    (IBottom1 _ _ _)     -> bottom before left right
+    (IBranch0 _ _)       -> branch before left right
+    (IBranch1 _ _ _)     -> branch before left right
+    (IBranch2 _ _ _ _ _) -> branch before left right
 
   where
   bottom b l r =
@@ -327,11 +327,11 @@ merge before (Just left) [] (Just right) =
 
 merge before (Just inc) (after:rest) minc =
   case inc of
-    (IBottom0 _ _) -> bottom before inc after rest minc
-    (IBottom1 _ _ _ _) -> bottom before inc after rest minc
-    (IBranch0 _ _ _) -> branch before inc after rest minc
-    (IBranch1 _ _ _ _) -> branch before inc after rest minc
-    (IBranch2 _ _ _ _ _ _) -> branch before inc after rest minc
+    (IBottom0 _) -> bottom before inc after rest minc
+    (IBottom1 _ _ _) -> bottom before inc after rest minc
+    (IBranch0 _ _) -> branch before inc after rest minc
+    (IBranch1 _ _ _) -> branch before inc after rest minc
+    (IBranch2 _ _ _ _ _) -> branch before inc after rest minc
   where
   bottom :: (Ord k, Serialize k, Serialize v)
            => [Tree Z Complete k v]
@@ -430,14 +430,14 @@ concat' completes incompletes =
   sort' = sortBy (comparing (\(a,b,_) -> (a,b)))
 
   completeEnd :: Tree Z Complete k v -> k
-  completeEnd (Bottom _ _ _ _ (tk, _tv)) = fromKey tk
+  completeEnd (Bottom _ _ _ (tk, _tv)) = fromKey tk
 
   getEnd :: Tree Z Incomplete k v -> Maybe k
-  getEnd (IBottom0 _ Nothing) =
+  getEnd (IBottom0 Nothing) =
     Nothing
-  getEnd (IBottom0 _ (Just (sk, _v))) =
+  getEnd (IBottom0 (Just (sk, _v))) =
     Just $ unwrap sk
-  getEnd (IBottom1 _ _ (sk, _v) ntmap) =
+  getEnd (IBottom1 _ (sk, _v) ntmap) =
     case Map.toDescList ntmap of
       []       -> Just $ unwrap sk
       (k,_v):_ -> Just $ fromKey k

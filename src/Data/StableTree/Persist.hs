@@ -18,8 +18,8 @@ module Data.StableTree.Persist
 , load'
 ) where
 
-import Data.StableTree.Conversion ( toFragments, fromFragments )
-import Data.StableTree.Types      ( StableTree(..), Fragment(..) )
+import Data.StableTree.Conversion ( Fragment(..), toFragments, fromFragments )
+import Data.StableTree.Types      ( StableTree(..) )
 
 import qualified Data.Map as Map
 import Data.ObjectID  ( ObjectID )
@@ -41,7 +41,7 @@ class Error e where
 -- be given to the fold only after all their children have been given to the
 -- fold. Exact ordering beyond that is not guaranteed, but the current
 -- behaviour is post-order depth-first traversal.
-store :: (Monad m, Error e, Ord k)
+store :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
       => (a -> ObjectID -> Fragment k v -> m (Either e a))
       -> a
       -> StableTree k v
@@ -49,14 +49,14 @@ store :: (Monad m, Error e, Ord k)
 store fn a0 = go a0 . toFragments
   where
   go accum [] = return $ Right accum
-  go accum ((fragid, frag):frags) =
-    fn accum fragid frag >>= \case
+  go accum (frag:frags) =
+    fn accum (fragmentObjectID frag) frag >>= \case
       Left err -> return $ Left err
       Right accum' -> go accum' frags
 
 -- |Alternate store function that acts more like a map than a fold. See 'store'
 -- for details.
-store' :: (Monad m, Error e, Ord k)
+store' :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
        => (ObjectID -> Fragment k v -> m (Maybe e))
        -> StableTree k v
        -> m (Either e ObjectID)
@@ -92,7 +92,7 @@ load fn a0 top =
   recur accum frags [] = return $ Right (accum, frags)
   recur accum frags (oid:rest) = fn accum oid >>= \case
     Left err -> return $ Left err
-    Right (accum', frag@(FragmentBottom _)) ->
+    Right (accum', frag@(FragmentBottom{})) ->
       recur accum' (Map.insert oid frag frags) rest
     Right (accum', frag) ->
       let children = fragmentChildren frag

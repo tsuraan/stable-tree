@@ -86,7 +86,7 @@ main = defaultMain $
       Just v' | v' == v -> test_lookup rest t
       _ -> False
 
-  test_delete :: (Show k, Ord k, Serialize k, Show v, Serialize v)
+  test_delete :: (Eq k, Show k, Ord k, Serialize k, Eq v, Show v, Serialize v)
               => [(k,v)]
               -> Gen Bool
   test_delete [] = return True
@@ -98,7 +98,7 @@ main = defaultMain $
         s' = ST.delete delkey s
     return (s' == ST.fromMap m')
 
-  test_insert :: (Show k, Ord k, Serialize k, Show v, Serialize v)
+  test_insert :: (Eq k, Show k, Ord k, Serialize k, Eq v, Show v, Serialize v)
               => [(k,v)]
               -> Gen Bool
   test_insert [] = return True
@@ -111,7 +111,7 @@ main = defaultMain $
         s'   = ST.insert inskey insval s
     return (s' == ST.fromMap m')
 
-  test_mutate :: (Arbitrary k, Show k, Ord k, Serialize k, Arbitrary v, Show v, Serialize v)
+  test_mutate :: (Arbitrary k, Eq k, Show k, Ord k, Serialize k, Arbitrary v, Eq v, Show v, Serialize v)
               => StableTree k v
               -> Gen Bool
   test_mutate tree | ST.size tree == 0 = return True

@@ -14,33 +14,14 @@ module Data.StableTree.Types
 , Z
 , S
 , Tree(..)
-, Fragment(..)
-, mkBottom
-, mkIBottom0
-, mkIBottom1
-, mkBranch
-, mkIBranch0
-, mkIBranch1
-, mkIBranch2
-, getObjectID
 , getDepth
 , getValueCount
-, calcObjectID
-, fixObjectID
-, makeFragment
 ) where
 
-import qualified Data.StableTree.Key as Key
+-- import qualified Data.StableTree.Key as Key
 import Data.StableTree.Key      ( SomeKey(..), Key(..), Terminal, Nonterminal )
 
 import qualified Data.Map as Map
-import Control.Applicative ( (<$>) )
-import Control.Arrow      ( second )
-import Control.Monad      ( replicateM )
-import Data.Serialize     ( Serialize(..) )
-import Data.Serialize.Put ( Put, putByteString )
-import Data.Serialize.Get ( Get, getByteString )
-import Data.ObjectID  ( ObjectID, calculateSerialize )
 import Data.Map       ( Map )
 
 -- |Alias to indicate how deep a branch in a tree is. Bottoms have depth 0
@@ -118,27 +99,23 @@ data S a
 -- case, no neighbors will be affected, and only the parents will have to
 -- change to point to the new branch. Stability is achieved!
 data Tree d c k v where
-  Bottom :: ObjectID
-         -> (SomeKey k, v)
+  Bottom :: (SomeKey k, v)
          -> (SomeKey k, v)
          -> Map (Key Nonterminal k) v
          -> (Key Terminal k, v)
          -> Tree Z Complete k v
 
   -- Either an empty or a singleton tree
-  IBottom0 :: ObjectID
-           -> Maybe (SomeKey k, v)
+  IBottom0 :: Maybe (SomeKey k, v)
            -> Tree Z Incomplete k v
 
   -- Any number of items, but not ending with a terminal key
-  IBottom1 :: ObjectID
-           -> (SomeKey k, v)
+  IBottom1 :: (SomeKey k, v)
            -> (SomeKey k, v)
            -> Map (Key Nonterminal k) v
            -> Tree Z Incomplete k v
 
-  Branch :: ObjectID
-         -> Depth
+  Branch :: Depth
          -> (SomeKey k, ValueCount, Tree d Complete k v)
          -> (SomeKey k, ValueCount, Tree d Complete k v)
          -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
@@ -146,268 +123,128 @@ data Tree d c k v where
          -> Tree (S d) Complete k v
 
   -- A strut to lift an incomplete tree to the next level up
-  IBranch0 :: ObjectID
-           -> Depth
+  IBranch0 :: Depth
            -> (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
 
   -- A joining of a single complete and maybe an incomplete
-  IBranch1 :: ObjectID
-           -> Depth
+  IBranch1 :: Depth
            -> (SomeKey k, ValueCount, Tree d Complete k v)
            -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
 
   -- A branch that doesn't have a terminal, and that might have an IBranch
-  IBranch2 :: ObjectID
-           -> Depth
+  IBranch2 :: Depth
            -> (SomeKey k, ValueCount, Tree d Complete k v)
            -> (SomeKey k, ValueCount, Tree d Complete k v)
            -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
            -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
            -> Tree (S d) Incomplete k v
-
--- |Helper to create a 'Bottom' instance with a calculated ObjectID
-mkBottom :: (Ord k, Serialize k, Serialize v)
-         => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
-         -> (Key Terminal k, v) -> Tree Z Complete k v
-mkBottom p1 p2 nts t = fixObjectID $ Bottom undefined p1 p2 nts t
-
--- |Helper to create an 'IBottom0' instance with a calculated ObjectID
-mkIBottom0 :: (Ord k, Serialize k, Serialize v)
-           => Maybe (SomeKey k, v) -> Tree Z Incomplete k v
-mkIBottom0 mp = fixObjectID $ IBottom0 undefined mp
-
--- |Helper to create an 'IBottom1' instance with a calculated ObjectID
-mkIBottom1 :: (Ord k, Serialize k, Serialize v)
-           => (SomeKey k, v) -> (SomeKey k, v) -> Map (Key Nonterminal k) v
-           -> Tree Z Incomplete k v
-mkIBottom1 p1 p2 nts = fixObjectID $ IBottom1 undefined p1 p2 nts
-
--- |Helper to create a 'Branch' instance with a calculated ObjectID
-mkBranch :: (Ord k, Serialize k, Serialize v)
-         => Depth
-         -> (SomeKey k, ValueCount, Tree d Complete k v)
-         -> (SomeKey k, ValueCount, Tree d Complete k v)
-         -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
-         -> (Key Terminal k, ValueCount, Tree d Complete k v)
-         -> Tree (S d) Complete k v
-mkBranch d t1 t2 nts t = fixObjectID $ Branch undefined d t1 t2 nts t
-
--- |Helper to create an 'IBranch0' instance with a calculated ObjectID
-mkIBranch0 :: (Ord k, Serialize k, Serialize v)
-           => Depth
-           -> (SomeKey k, ValueCount, Tree d Incomplete k v)
-           -> Tree (S d) Incomplete k v
-mkIBranch0 d inc = fixObjectID $ IBranch0 undefined d inc
-
--- |Helper to create an 'IBranch1' instance with a calculated ObjectID
-mkIBranch1 :: (Ord k, Serialize k, Serialize v)
-           => Depth
-           -> (SomeKey k, ValueCount, Tree d Complete k v)
-           -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
-           -> Tree (S d) Incomplete k v
-mkIBranch1 d tup minc = fixObjectID $ IBranch1 undefined d tup minc
-
--- |Helper to create an 'IBranch2' instance with a calculated ObjectID
-mkIBranch2 :: (Ord k, Serialize k, Serialize v)
-           => Depth
-           -> (SomeKey k, ValueCount, Tree d Complete k v)
-           -> (SomeKey k, ValueCount, Tree d Complete k v)
-           -> Map (Key Nonterminal k) (ValueCount, Tree d Complete k v)
-           -> Maybe (SomeKey k, ValueCount, Tree d Incomplete k v)
-           -> Tree (S d) Incomplete k v
-mkIBranch2  d t1 t2 nts minc = fixObjectID $ IBranch2 undefined d t1 t2 nts minc
-
--- |A 'Fragment' is a user-visible part of a tree, i.e. a single node in the
--- tree that can actually be manipulated by a user. This is useful when doing
--- the work of persisting trees, and its serialize instance is also used to
--- calculate Tree ObjectIDs. See `Data.StableTree.Conversion.toFragments` and
--- `Data.StableTree.Conversion.fromFragments` for functions to convert between
--- Fragments and Trees. see `Data.StableTree.Persist.store` and
--- `Data.StableTree.Persist.load` for functions related to storing and
--- retrieving Fragments.
-data Fragment k v
-  = FragmentBranch
-    { fragmentDepth    :: Depth
-    , fragmentChildren :: Map k (ValueCount, ObjectID)
-    }
-  | FragmentBottom
-    { fragmentMap :: Map k v
-    }
-  deriving( Eq, Ord, Show )
 
 class TreeNode n where
-  -- |Get the ObjectID of a 'Tree' or 'StableTree'
-  getObjectID   :: n k v -> ObjectID
   -- |Get the depth (height?) of a 'Tree' or 'StableTree'
   getDepth      :: n k v -> Depth
   -- |Get the total number of key/value pairs stored under this 'Tree' or
   -- 'StableTree'
   getValueCount :: n k v -> ValueCount
-  -- |Do the (expensive) calculation of a 'Tree' or 'StableTree'; generally
-  -- used to do the initial ObjectID calculation when constructing an instance
-  calcObjectID  :: (Ord k, Serialize k, Serialize v) => n k v -> ObjectID
-  -- |Recalculate the object's ObjectID and return the updated object;
-  -- pretty much a convenience function around 'calcObjectID'
-  fixObjectID   :: (Ord k, Serialize k, Serialize v) => n k v -> n k v
-  -- |Get the 'Fragment' representing this exact 'Tree' node, used for
-  -- persistent storage
-  makeFragment  :: Ord k => n k v -> Fragment k v
-  -- getFullContents :: n k v -> Map k v
 
 instance TreeNode (Tree d c) where
-  getObjectID (Bottom o _ _ _ _)     = o
-  getObjectID (IBottom0 o _)         = o
-  getObjectID (IBottom1 o _ _ _)     = o
-  getObjectID (Branch o _ _ _ _ _)   = o
-  getObjectID (IBranch0 o _ _)       = o
-  getObjectID (IBranch1 o _ _ _)     = o
-  getObjectID (IBranch2 o _ _ _ _ _) = o
+  getDepth (Bottom _ _ _ _)     = 0
+  getDepth (IBottom0 _)         = 0
+  getDepth (IBottom1 _ _ _)     = 0
+  getDepth (Branch d _ _ _ _)   = d
+  getDepth (IBranch0 d _)       = d
+  getDepth (IBranch1 d _ _)     = d
+  getDepth (IBranch2 d _ _ _ _) = d
 
-  getDepth (Bottom _ _ _ _ _)     = 0
-  getDepth (IBottom0 _ _)         = 0
-  getDepth (IBottom1 _ _ _ _)     = 0
-  getDepth (Branch _ d _ _ _ _)   = d
-  getDepth (IBranch0 _ d _)       = d
-  getDepth (IBranch1 _ d _ _)     = d
-  getDepth (IBranch2 _ d _ _ _ _) = d
-
-  getValueCount (Bottom _ _ _ m _)   = 3 + Map.size m
-  getValueCount (IBottom0 _ Nothing) = 0
-  getValueCount (IBottom0 _ _)       = 1
-  getValueCount (IBottom1 _ _ _ m)   = 2 + Map.size m
+  getValueCount (Bottom _ _ m _)   = 3 + Map.size m
+  getValueCount (IBottom0 Nothing) = 0
+  getValueCount (IBottom0 _)       = 1
+  getValueCount (IBottom1 _ _ m)   = 2 + Map.size m
   
-  getValueCount (Branch _ _ (_,c1,_) (_,c2,_) nterm (_,c3,_)) =
+  getValueCount (Branch _ (_,c1,_) (_,c2,_) nterm (_,c3,_)) =
     c1 + c2 + c3 + sum (map fst $ Map.elems nterm)
-  getValueCount (IBranch0 _ _ (_,c,_)) =
+  getValueCount (IBranch0 _ (_,c,_)) =
     c
-  getValueCount (IBranch1 _ _ (_,c,_) Nothing) =
+  getValueCount (IBranch1 _ (_,c,_) Nothing) =
     c
-  getValueCount (IBranch1 _ _ (_,c1,_) (Just (_,c2,_))) =
+  getValueCount (IBranch1 _ (_,c1,_) (Just (_,c2,_))) =
     c1+c2
-  getValueCount (IBranch2 _ _ (_,c1,_) (_,c2,_) m i) =
+  getValueCount (IBranch2 _ (_,c1,_) (_,c2,_) m i) =
     c1 + c2 + sum (map fst $ Map.elems m) + maybe 0 (\(_,c3,_)->c3) i
 
-  calcObjectID tree = calculateSerialize $ makeFragment tree
-
-  fixObjectID t@(Bottom _ a b c d)     = Bottom (calcObjectID t) a b c d
-  fixObjectID t@(IBottom0 _ a)         = IBottom0 (calcObjectID t) a
-  fixObjectID t@(IBottom1 _ a b c)     = IBottom1 (calcObjectID t) a b c
-  fixObjectID t@(Branch _ a b c d e)   = Branch (calcObjectID t) a b c d e
-  fixObjectID t@(IBranch0 _ a b)       = IBranch0 (calcObjectID t) a b
-  fixObjectID t@(IBranch1 _ a b c)     = IBranch1 (calcObjectID t) a b c
-  fixObjectID t@(IBranch2 _ a b c d e) = IBranch2 (calcObjectID t) a b c d e
-
-  makeFragment tree =
-    case tree of
-      (Bottom _ p1 p2 m pt) ->
-        fragBottom p1 p2 m (Just pt)
-      (IBottom0 _ Nothing) ->
-        FragmentBottom Map.empty
-      (IBottom0 _ (Just (k1,v1))) ->
-        FragmentBottom $ Map.singleton (Key.unwrap k1) v1
-      (IBottom1 _ p1 p2 m) ->
-        fragBottom p1 p2 m Nothing
-      (Branch _ d (k1,c1,t1) (k2,c2,t2) m (kt,ct,tt)) ->
-        let cont = Map.insert (Key.unwrap k1) (c1,getObjectID t1)
-                 $ Map.insert (Key.unwrap k2) (c2,getObjectID t2)
-                 $ Map.insert (fromKey kt) (ct,getObjectID tt)
-                 $ Map.mapKeys fromKey
-                 $ Map.map (second getObjectID) m
-        in FragmentBranch d cont
-      (IBranch0 _ d (k,c,t)) ->
-        FragmentBranch d $ Map.singleton (Key.unwrap k) (c,getObjectID t)
-      (IBranch1 _ d (k,c,t) Nothing) ->
-        FragmentBranch d $ Map.singleton (Key.unwrap k) (c,getObjectID t)
-      (IBranch1 _ d (k,c,t) (Just (ki,ci,ti))) ->
-        let cont = Map.fromList [ (Key.unwrap k, (c, getObjectID t))
-                                , (Key.unwrap ki, (ci, getObjectID ti)) ]
-        in FragmentBranch d cont
-      (IBranch2 _ d (k1,c1,t1) (k2,c2,t2) m minc) ->
-        let cont = Map.insert (Key.unwrap k1) (c1,getObjectID t1)
-                 $ Map.insert (Key.unwrap k2) (c2,getObjectID t2)
-                 $ Map.mapKeys fromKey
-                 $ Map.map (second getObjectID) m
-            cont' = case minc of
-              Nothing -> cont
-              (Just (ki,ci,ti)) ->
-                Map.insert (Key.unwrap ki) (ci, getObjectID ti) cont
-        in FragmentBranch d cont'
-    where
-    fragBottom (k1,v1) (k2,v2) mapping mterm =
-      let cont = Map.insert (Key.unwrap k1) v1
-               $ Map.insert (Key.unwrap k2) v2
-               $ Map.mapKeys fromKey mapping
-          cont' = case mterm of
-            Nothing -> cont
-            (Just (tk, tv)) -> Map.insert (fromKey tk) tv cont
-      in FragmentBottom cont'
-
 instance TreeNode StableTree where
-  getObjectID (StableTree_I t) = getObjectID t
-  getObjectID (StableTree_C t) = getObjectID t
-
   getDepth (StableTree_I t) = getDepth t
   getDepth (StableTree_C t) = getDepth t
 
   getValueCount (StableTree_I t) = getValueCount t
   getValueCount (StableTree_C t) = getValueCount t
 
-  calcObjectID (StableTree_I t) = calcObjectID t
-  calcObjectID (StableTree_C t) = calcObjectID t
+instance (Eq k, Eq v) => Eq (Tree d c k v) where
+  (Bottom lp1 lp2 lnts lt) == (Bottom rp1 rp2 rnts rt) =
+    (lp1 == rp1) && (lp2 == rp2) && (lnts == rnts) && (lt == rt)
+  (IBottom0 l) == (IBottom0 r) = l == r
+  (IBottom1 lp1 lp2 lnts) == (IBottom1 rp1 rp2 rnts) = 
+    (lp1 == rp1) && (lp2 == rp2) && (lnts == rnts)
 
-  fixObjectID (StableTree_I t) = StableTree_I $ fixObjectID t
-  fixObjectID (StableTree_C t) = StableTree_C $ fixObjectID t
+  -- We _could_ check the depth parameter as well, but that's also in the type
+  -- signature, so why bother?
+  (Branch _ lt1 lt2 lnts lt) == (Branch _ rt1 rt2 rnts rt) =
+    (lt1 == rt1) && (lt2 == rt2) && (lnts == rnts) && (lt == rt)
+  (IBranch0 _ lt) == (IBranch0 _ rt) = lt == rt
+  (IBranch1 _ lt li) == (IBranch1 _ rt ri) = (lt == rt) && (li == ri)
+  (IBranch2 _ lt1 lt2 lnts li) == (IBranch2 _ rt1 rt2 rnts ri) =
+    (lt1 == rt1) && (lt2 == rt2) && (lnts == rnts) && (li == ri)
+  _ == _ = False
 
-  makeFragment (StableTree_I t) = makeFragment t
-  makeFragment (StableTree_C t) = makeFragment t
+instance (Eq k, Eq v) => Eq (StableTree k v) where
+  (StableTree_I t1) == (StableTree_I t2) = t1 `equals` t2
+  (StableTree_C t1) == (StableTree_C t2) = t1 `equals` t2
+  _ == _ = False
 
-instance Eq (Tree d c k v) where
-  t1 == t2 = getObjectID t1 == getObjectID t2
+equals :: (Eq k, Eq v) => Tree d1 c1 k v -> Tree d2 c2 k v -> Bool
+equals l@(Bottom{}) r@(Bottom{})     = l == r
+equals l@(IBottom0{}) r@(IBottom0{}) = l == r
+equals l@(IBottom1{}) r@(IBottom1{}) = l == r
+equals (Branch ld (lk1, lv1, lt1) (lk2, lv2, lt2) lnts (lkt, lvt, ltt))
+       (Branch rd (rk1, rv1, rt1) (rk2, rv2, rt2) rnts (rkt, rvt, rtt)) =
+  (ld == rd) &&
+    (lk1 == rk1) && (lk2 == rk2) && (lkt == rkt) &&
+    (lv1 == rv1) && (lv2 == rv2) && (lvt == rvt) &&
+    (lt1 `equals` rt1) && (lt2 `equals` rt2) && (ltt `equals` rtt) &&
+    (ntEquals lnts rnts)
+equals (IBranch0 ld (lk, lv, lt)) (IBranch0 rd (rk, rv, rt)) =
+  (ld == rd) && (lk == rk) && (lv == rv) && (lt `equals` rt)
+equals (IBranch1 ld (lk, lv, lt) Nothing) (IBranch1 rd (rk, rv, rt) Nothing) =
+  (ld == rd) && (lk == rk) && (lv == rv) && (lt `equals` rt)
+equals (IBranch1 ld (lk, lv, lt) (Just (lki, lvi, lti)))
+       (IBranch1 rd (rk, rv, rt) (Just (rki, rvi, rti))) =
+  (ld == rd) && (lk == rk) && (lv == rv) && (lki == rki) && (lvi == rvi) &&
+    (lt `equals` rt) && (lti `equals` rti)
+equals (IBranch2 ld (lk1, lv1, lt1) (lk2, lv2, lt2) lnts Nothing)
+       (IBranch2 rd (rk1, rv1, rt1) (rk2, rv2, rt2) rnts Nothing) =
+  (ld == rd) &&
+    (lk1 == rk1) && (lk2 == rk2) && (lv1 == rv1) && (lv2 == rv2) &&
+    (lt1 `equals` rt1) && (lt2 `equals` rt2) && (ntEquals lnts rnts)
+equals (IBranch2 ld (lk1, lv1, lt1) (lk2, lv2, lt2) lnts (Just (lki, lvi, lti)))
+       (IBranch2 rd (rk1, rv1, rt1) (rk2, rv2, rt2) rnts (Just (rki, rvi, rti))) =
+  (ld == rd) &&
+    (lk1 == rk1) && (lk2 == rk2) && (lv1 == rv1) && (lv2 == rv2) &&
+    (lki == rki) && (lvi == rvi) && (lti `equals` rti) &&
+    (lt1 `equals` rt1) && (lt2 `equals` rt2) && (ntEquals lnts rnts)
+equals _ _ = False
 
-instance Eq (StableTree k v) where
-  (StableTree_I t1) == (StableTree_I t2) = getObjectID t1 == getObjectID t2
-  (StableTree_C t1) == (StableTree_C t2) = getObjectID t1 == getObjectID t2
-  (StableTree_I _) == (StableTree_C _) = False
-  (StableTree_C _) == (StableTree_I _) = False
-
-instance Ord (StableTree k v) where
-  compare l r = compare (getObjectID l) (getObjectID r)
+ntEquals :: (Eq k, Eq v)
+         => Map (Key Nonterminal k) (ValueCount, Tree d1 Complete k v)
+         -> Map (Key Nonterminal k) (ValueCount, Tree d2 Complete k v)
+         -> Bool
+ntEquals lnts rnts =
+  (Map.keys lnts == Map.keys rnts) &&
+    (map fst (Map.elems lnts) == map fst (Map.elems rnts)) &&
+    (all (==True) (zipWith (\l r -> (snd l) `equals` (snd r))
+                           (Map.elems lnts)
+                           (Map.elems rnts)))
 
 deriving instance (Ord k, Show k, Show v) => Show (StableTree k v)
 deriving instance (Ord k, Show k, Show v) => Show (Tree d c k v)
-
-instance (Ord k, Serialize k, Serialize v) => Serialize (Fragment k v) where
-  put frag =
-    case frag of
-      (FragmentBranch depth children) -> fragPut depth children
-      (FragmentBottom values)         -> fragPut 0 values
-    where
-    fragPut :: (Serialize k, Serialize v) => Depth -> Map k v -> Put
-    fragPut depth items = do
-      putByteString "stable-tree\0"
-      put depth
-      put $ Map.size items
-      mapM_ (\(k,v) -> put k >> put v) (Map.toAscList items)
-
-  get =
-    getByteString 12 >>= \case
-      "stable-tree\0" -> do
-        get >>= \case
-          0 -> do
-            count <- get
-            children <- Map.fromList <$> replicateM count getPair
-            return $ FragmentBottom children
-          depth -> do
-            count <- get
-            children <- Map.fromList <$> replicateM count getPair
-            return $ FragmentBranch depth children
-      _ -> fail "Not a serialized Fragment"
-    where
-    getPair :: (Serialize k, Serialize v) => Get (k,v)
-    getPair = do
-      k <- get
-      v <- get
-      return (k,v)
 

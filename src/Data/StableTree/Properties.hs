@@ -34,20 +34,20 @@ import Prelude hiding ( lookup )
 -- |Get the key of the first entry in this branch. If the branch is empty,
 -- returns Nothing.
 getKey :: Tree d c k v -> Maybe k
-getKey (Bottom _ (k,_) _ _ _)       = Just $ Key.unwrap k
-getKey (IBottom0 _ Nothing)         = Nothing
-getKey (IBottom0 _ (Just (k,_)))    = Just $ Key.unwrap k
-getKey (IBottom1 _ (k,_) _ _)       = Just $ Key.unwrap k
-getKey (Branch _ _ (k,_,_) _ _ _)   = Just $ Key.unwrap k
-getKey (IBranch0 _ _ (k,_,_))       = Just $ Key.unwrap k
-getKey (IBranch1 _ _ (k,_,_) _)     = Just $ Key.unwrap k
-getKey (IBranch2 _ _ (k,_,_) _ _ _) = Just $ Key.unwrap k
+getKey (Bottom (k,_) _ _ _)       = Just $ Key.unwrap k
+getKey (IBottom0 Nothing)         = Nothing
+getKey (IBottom0 (Just (k,_)))    = Just $ Key.unwrap k
+getKey (IBottom1 (k,_) _ _)       = Just $ Key.unwrap k
+getKey (Branch _ (k,_,_) _ _ _)   = Just $ Key.unwrap k
+getKey (IBranch0 _ (k,_,_))       = Just $ Key.unwrap k
+getKey (IBranch1 _ (k,_,_) _)     = Just $ Key.unwrap k
+getKey (IBranch2 _ (k,_,_) _ _ _) = Just $ Key.unwrap k
 
 -- |Get the key of the first entry in this complete branch. This function is
 -- total.
 completeKey :: Tree d Complete k v -> k
-completeKey (Bottom _ (k,_) _ _ _)     = Key.unwrap k
-completeKey (Branch _ _ (k,_,_) _ _ _) = Key.unwrap k
+completeKey (Bottom (k,_) _ _ _)     = Key.unwrap k
+completeKey (Branch _ (k,_,_) _ _ _) = Key.unwrap k
 
 -- |Get the total number of k/v pairs in the tree
 size :: StableTree k v -> ValueCount
@@ -64,13 +64,13 @@ lookup key tree =
   lookup' :: Ord k => k -> Tree d c k v -> Maybe v
   lookup' k t =
     case t of
-      Bottom _ _ _ _ _     -> Map.lookup k $ bottomChildren t
-      IBottom0 _ _         -> Map.lookup k $ bottomChildren t
-      IBottom1 _ _ _ _     -> Map.lookup k $ bottomChildren t
-      Branch _ _ _ _ _ _   -> lookup'' k t
-      IBranch0 _ _ _       -> lookup'' k t
-      IBranch1 _ _ _ _     -> lookup'' k t
-      IBranch2 _ _ _ _ _ _ -> lookup'' k t
+      Bottom _ _ _ _     -> Map.lookup k $ bottomChildren t
+      IBottom0 _         -> Map.lookup k $ bottomChildren t
+      IBottom1 _ _ _     -> Map.lookup k $ bottomChildren t
+      Branch _ _ _ _ _   -> lookup'' k t
+      IBranch0 _ _       -> lookup'' k t
+      IBranch1 _ _ _     -> lookup'' k t
+      IBranch2 _ _ _ _ _ -> lookup'' k t
 
   lookup'' :: Ord k => k -> Tree (S d) c k v -> Maybe v
   lookup'' k t =
@@ -96,13 +96,13 @@ assocs tree =
   assocs' :: Ord k => Tree d c k v -> [(k, v)]
   assocs' t =
     case t of
-      Bottom _ _ _ _ _     -> Map.assocs $ bottomChildren t
-      IBottom0 _ _         -> Map.assocs $ bottomChildren t
-      IBottom1 _ _ _ _     -> Map.assocs $ bottomChildren t
-      Branch _ _ _ _ _ _   -> assocs'' t
-      IBranch0 _ _ _       -> assocs'' t
-      IBranch1 _ _ _ _     -> assocs'' t
-      IBranch2 _ _ _ _ _ _ -> assocs'' t
+      Bottom _ _ _ _     -> Map.assocs $ bottomChildren t
+      IBottom0 _         -> Map.assocs $ bottomChildren t
+      IBottom1 _ _ _     -> Map.assocs $ bottomChildren t
+      Branch _ _ _ _ _   -> assocs'' t
+      IBranch0 _ _       -> assocs'' t
+      IBranch1 _ _ _     -> assocs'' t
+      IBranch2 _ _ _ _ _ -> assocs'' t
 
   assocs'' :: Ord k => Tree (S d) c k v -> [(k, v)]
   assocs'' t =
@@ -118,13 +118,13 @@ assocs tree =
 treeContents :: Ord k => Tree d c k v -> Map k v
 treeContents t =
   case t of
-    (Bottom _ _ _ _ _)     -> bottomChildren t
-    (IBottom0 _ _)         -> bottomChildren t
-    (IBottom1 _ _ _ _)     -> bottomChildren t
-    (Branch _ _ _ _ _ _)   -> recur $ branchChildren t
-    (IBranch0 _ _ _)       -> recur $ branchChildren t
-    (IBranch1 _ _ _ _)     -> recur $ branchChildren t
-    (IBranch2 _ _ _ _ _ _) -> recur $ branchChildren t
+    (Bottom _ _ _ _)     -> bottomChildren t
+    (IBottom0 _)         -> bottomChildren t
+    (IBottom1 _ _ _)     -> bottomChildren t
+    (Branch _ _ _ _ _)   -> recur $ branchChildren t
+    (IBranch0 _ _)       -> recur $ branchChildren t
+    (IBranch1 _ _ _)     -> recur $ branchChildren t
+    (IBranch2 _ _ _ _ _) -> recur $ branchChildren t
 
   where
   recur :: Ord k
@@ -158,13 +158,13 @@ stableChildren tree =
                   -> Either (Map k v) (Map k (ValueCount, StableTree k v))
   stableChildren' t =
     case t of
-      (Bottom _ _ _ _ _)     -> Left $ bottomChildren t
-      (IBottom0 _ _)         -> Left $ bottomChildren t
-      (IBottom1 _ _ _ _)     -> Left $ bottomChildren t
-      (Branch _ _ _ _ _ _)   -> Right $ branchChildren' t
-      (IBranch0 _ _ _)       -> Right $ branchChildren' t
-      (IBranch1 _ _ _ _)     -> Right $ branchChildren' t
-      (IBranch2 _ _ _ _ _ _) -> Right $ branchChildren' t
+      (Bottom _ _ _ _)     -> Left $ bottomChildren t
+      (IBottom0 _)         -> Left $ bottomChildren t
+      (IBottom1 _ _ _)     -> Left $ bottomChildren t
+      (Branch _ _ _ _ _)   -> Right $ branchChildren' t
+      (IBranch0 _ _)       -> Right $ branchChildren' t
+      (IBranch1 _ _ _)     -> Right $ branchChildren' t
+      (IBranch2 _ _ _ _ _) -> Right $ branchChildren' t
 
   branchChildren' :: Ord k
                   => Tree (S d) c k v
@@ -185,18 +185,18 @@ stableChildren tree =
 bottomChildren :: Ord k
                => Tree Z c k v
                -> Map k v
-bottomChildren (Bottom _ (k1,v1) (k2,v2) terms (kt,vt)) =
+bottomChildren (Bottom (k1,v1) (k2,v2) terms (kt,vt)) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) v1
              $ Map.insert (Key.unwrap k2) v2
              $ Map.insert (Key.fromKey kt) vt
              terms'
   in conts
-bottomChildren (IBottom0 _ Nothing) =
+bottomChildren (IBottom0 Nothing) =
   Map.empty
-bottomChildren (IBottom0 _ (Just (k,v))) =
+bottomChildren (IBottom0 (Just (k,v))) =
   Map.singleton (Key.unwrap k) v
-bottomChildren (IBottom1 _ (k1,v1) (k2,v2) terms) =
+bottomChildren (IBottom1 (k1,v1) (k2,v2) terms) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) v1
              $ Map.insert (Key.unwrap k2) v2
@@ -209,19 +209,19 @@ branchChildren :: Ord k
                => Tree (S d) c k v
                -> ( Map k (ValueCount, Tree d Complete k v)
                   , Maybe (k, ValueCount, Tree d Incomplete k v))
-branchChildren (Branch _ _d (k1,c1,v1) (k2,c2,v2) terms (kt,ct,vt)) =
+branchChildren (Branch _d (k1,c1,v1) (k2,c2,v2) terms (kt,ct,vt)) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) (c1,v1)
              $ Map.insert (Key.unwrap k2) (c2,v2)
              $ Map.insert (Key.fromKey kt) (ct,vt)
              terms'
   in (conts, Nothing)
-branchChildren (IBranch0 _ _d (ik,ic,iv)) =
+branchChildren (IBranch0 _d (ik,ic,iv)) =
   (Map.empty, Just (Key.unwrap ik, ic, iv))
-branchChildren (IBranch1 _ _d (k1,c1,v1) mIncomplete) =
+branchChildren (IBranch1 _d (k1,c1,v1) mIncomplete) =
   ( Map.singleton (Key.unwrap k1) (c1,v1)
   , mIncomplete >>= (\(k,c,v) -> return (Key.unwrap k,c,v)))
-branchChildren (IBranch2 _ _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
+branchChildren (IBranch2 _d (k1,c1,v1) (k2,c2,v2) terms mIncomplete) =
   let terms' = Map.mapKeys Key.fromKey terms
       conts  = Map.insert (Key.unwrap k1) (c1,v1)
              $ Map.insert (Key.unwrap k2) (c2,v2)
