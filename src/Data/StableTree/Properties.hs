@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs #-}
 -- |
--- Module    : Data.StableTree
+-- Module    : Data.StableTree.Properties
 -- Copyright : Jeremy Groven
 -- License   : BSD3
 --

@@ -19,11 +19,12 @@ module Data.StableTree.Persist
 ) where
 
 import Data.StableTree.Conversion ( Fragment(..), toFragments, fromFragments )
+import Data.StableTree.Key        ( StableKey )
 import Data.StableTree.Types      ( StableTree(..) )
 
 import qualified Data.Map as Map
 import Data.ObjectID  ( ObjectID )
-import Data.Serialize ( Serialize(..) )
+import Data.Serialize ( Serialize )
 import Data.Text      ( Text )
 
 -- |Things go wrong with end-user storage, but things can also go wrong with
@@ -41,7 +42,7 @@ class Error e where
 -- be given to the fold only after all their children have been given to the
 -- fold. Exact ordering beyond that is not guaranteed, but the current
 -- behaviour is post-order depth-first traversal.
-store :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
+store :: (Monad m, Error e, Ord k, Serialize k, StableKey k, Serialize v)
       => (a -> ObjectID -> Fragment k v -> m (Either e a))
       -> a
       -> StableTree k v
@@ -56,7 +57,7 @@ store fn a0 = go a0 . toFragments
 
 -- |Alternate store function that acts more like a map than a fold. See 'store'
 -- for details.
-store' :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
+store' :: (Monad m, Error e, Ord k, Serialize k, StableKey k, Serialize v)
        => (ObjectID -> Fragment k v -> m (Maybe e))
        -> StableTree k v
        -> m (Either e ObjectID)
@@ -70,7 +71,7 @@ store' fn = store fn' undefined
 -- |Reverse of 'store'. As with 'store', this acts like a fold, but converts an
 -- 'ObjectID' into a tree, rather than storing a tree. This will always build
 -- the tree from the top down.
-load :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
+load :: (Monad m, Error e, Ord k, Serialize k, StableKey k, Serialize v)
      => (a -> ObjectID -> m (Either e (a, Fragment k v)))
      -> a
      -> ObjectID
@@ -100,7 +101,7 @@ load fn a0 top =
       in recur accum' (Map.insert oid frag frags) (oids ++ rest)
 
 -- |Version of 'load' that acts like a map rather than a fold.
-load' :: (Monad m, Error e, Ord k, Serialize k, Serialize v)
+load' :: (Monad m, Error e, Ord k, Serialize k, StableKey k, Serialize v)
       => (ObjectID -> m (Either e (Fragment k v)))
       -> ObjectID
       -> m (Either e (StableTree k v))

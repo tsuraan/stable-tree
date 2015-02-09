@@ -7,6 +7,7 @@ import qualified Data.StableTree as ST
 import qualified Data.StableTree.Persist as SP
 import Data.StableTree ( StableTree )
 import Data.StableTree.Persist ( Fragment(..), Error(..) )
+import Data.StableTree.Key     ( StableKey )
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -86,7 +87,8 @@ main = defaultMain $
       Just v' | v' == v -> test_lookup rest t
       _ -> False
 
-  test_delete :: (Eq k, Show k, Ord k, Serialize k, Eq v, Show v, Serialize v)
+  test_delete :: ( Eq k, Show k, Ord k, Serialize k, StableKey k
+                 , Eq v, Show v, Serialize v)
               => [(k,v)]
               -> Gen Bool
   test_delete [] = return True
@@ -98,7 +100,8 @@ main = defaultMain $
         s' = ST.delete delkey s
     return (s' == ST.fromMap m')
 
-  test_insert :: (Eq k, Show k, Ord k, Serialize k, Eq v, Show v, Serialize v)
+  test_insert :: ( Eq k, Show k, Ord k, Serialize k, StableKey k
+                 , Eq v, Show v, Serialize v)
               => [(k,v)]
               -> Gen Bool
   test_insert [] = return True
@@ -111,7 +114,8 @@ main = defaultMain $
         s'   = ST.insert inskey insval s
     return (s' == ST.fromMap m')
 
-  test_mutate :: (Arbitrary k, Eq k, Show k, Ord k, Serialize k, Arbitrary v, Eq v, Show v, Serialize v)
+  test_mutate :: ( Arbitrary k, Eq k, Show k, Ord k, Serialize k, StableKey k
+                 , Arbitrary v, Eq v, Show v, Serialize v)
               => StableTree k v
               -> Gen Bool
   test_mutate tree | ST.size tree == 0 = return True
@@ -144,7 +148,8 @@ main = defaultMain $
   store_bytestring_int :: [(ArbByteString,Int)] -> Bool
   store_bytestring_int = action . map (first fromABS)
 
-  action :: (Eq k, Ord k, Serialize k, Eq v, Serialize v) => [(k,v)] -> Bool
+  action :: (Eq k, Ord k, Serialize k, StableKey k, Eq v, Serialize v)
+         => [(k,v)] -> Bool
   action pairs = fst $ runState go Map.empty
     where
     go = do
@@ -165,13 +170,13 @@ instance Error RamError where
 
 type StableTreeState = State (Map ByteString ByteString)
 
-store :: (Ord k, Serialize k, Serialize v)
+store :: (Ord k, Serialize k, StableKey k, Serialize v)
       => ObjectID -> Fragment k v -> StableTreeState (Maybe RamError)
 store oid frag = do
   modify $ Map.insert (encode oid) (encode frag)
   return Nothing
 
-load :: (Ord k, Serialize k, Serialize v)
+load :: (Ord k, Serialize k, StableKey k, Serialize v)
      => ObjectID -> StableTreeState (Either RamError (Fragment k v))
 load oid =
   gets (Map.lookup $ encode oid) >>= \case

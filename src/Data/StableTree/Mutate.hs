@@ -1,31 +1,34 @@
 {-# LANGUAGE LambdaCase, GADTs #-}
+-- |
+-- Module    : Data.StableTree
+-- Copyright : Jeremy Groven
+-- License   : BSD3
+--
+-- Functions for "updating" StableTrees, in the functional sense. This covers
+-- insertion, deletion, etc.
 module Data.StableTree.Mutate
 ( insert
 , delete
-, fmap
 ) where
 
-import Data.StableTree.Types
 import Data.StableTree.Build      ( consume, consumeBranches', consumeMap, merge )
+import Data.StableTree.Key        ( StableKey )
 import Data.StableTree.Properties ( bottomChildren, selectNode )
+import Data.StableTree.Types
 
 import qualified Data.Map as Map
-import Data.Map       ( Map )
-import Data.Serialize ( Serialize )
-
-import qualified Prelude
-import Prelude hiding ( fmap )
+import Data.Map     ( Map )
 
 -- |Insert a key/value into a 'StableTree'. If the key exists, its existing
 -- value is overwritten.
-insert :: (Ord k, Serialize k, Serialize v)
+insert :: (Ord k, StableKey k)
        => k -> v -> StableTree k v -> StableTree k v
 insert k v (StableTree_C c) = (uncurry consume) $ insert' k v c
 insert k v (StableTree_I i) = (uncurry consume) $ insert' k v i
 
 -- |Remove a key from the 'StableTree'. If the key is not found, the tree is
 -- returned unchanged.
-delete :: (Ord k, Serialize k, Serialize v)
+delete :: (Ord k, StableKey k)
        => k -> StableTree k v -> StableTree k v
 delete k (StableTree_C c) = (uncurry consume) $ delete' k c
 delete k (StableTree_I i) = (uncurry consume) $ delete' k i
@@ -33,7 +36,7 @@ delete k (StableTree_I i) = (uncurry consume) $ delete' k i
 -- |Same as 'insert', but works on a 'Tree', and returns a list of completes
 -- and a maybe incomplete instead of returning something that probably can't be
 -- expressed in Haskell's type system.
-insert' :: (Ord k, Serialize k, Serialize v)
+insert' :: (Ord k, StableKey k)
         => k
         -> v
         -> Tree d c k v
@@ -43,7 +46,7 @@ insert' k v = mutateBottom k $ Map.insert k v
 -- |Same as 'delete', but works on a 'Tree', and returns a list of completes
 -- and a maybe incomplete instead of returning something that probably can't be
 -- expressed in Haskell's type system.
-delete' :: (Ord k, Serialize k, Serialize v)
+delete' :: (Ord k, StableKey k)
         => k
         -> Tree d c k v
         -> ([Tree d Complete k v], Maybe (Tree d Incomplete k v))
@@ -53,7 +56,7 @@ delete' k = mutateBottom k $ Map.delete k
 -- given function on its contents. Once that's done, splice the result back
 -- into a new tree, which will probably be really similar to the original, but
 -- have the desired changes applied.
-mutateBottom :: (Ord k, Serialize k, Serialize v)
+mutateBottom :: (Ord k, StableKey k)
              => k
              -> (Map k v -> Map k v)
              -> Tree d c k v
@@ -68,7 +71,7 @@ mutateBottom search_key mut_fn = \case
     branch@(IBranch2 _ _ _ _ _) -> mutate search_key mut_fn branch
   where
 
-  mutate :: (Ord k, Serialize k, Serialize v)
+  mutate :: (Ord k, StableKey k)
          => k
          -> (Map k v -> Map k v)
          -> Tree (S d) c k v
@@ -85,42 +88,4 @@ mutateBottom search_key mut_fn = \case
                                            after
                                            mincomplete
         in consumeBranches' merged_before merged_minc
-
-class SerialFunctor f where
-  -- |Same as the 'fmap' instance of 'Functor', but with the restriction that
-  -- the input and output of the mutation function must be 'Serialize'-able.
-  -- Using the real instance would be really cool, but we need that Serialize
-  -- instance.
-  fmap :: (Serialize a, Serialize b) => (a -> b) -> f a -> f b
-
-instance (Ord k, Serialize k) => SerialFunctor (Tree d c k) where
-  fmap fn (Bottom (k1, v1) (k2, v2) nonterms (kt, vt)) =
-    Bottom (k1, fn v1) (k2, fn v2) (Map.map fn nonterms) (kt, fn vt)
-  fmap fn (IBottom0 mpair) =
-    IBottom0 (Prelude.fmap (\(k,v) -> (k, fn v)) mpair)
-  fmap fn (IBottom1 (k1, v1) (k2, v2) nonterms) =
-    IBottom1 (k1, fn v1) (k2, fn v2) (Map.map fn nonterms)
-  fmap fn (Branch d (k1, c1, t1) (k2, c2, t2) nonterms (kt, ct, tt)) =
-    Branch d
-             (k1, c1, fmap fn t1)
-             (k2, c2, fmap fn t2)
-             (Map.map (\(c,t) -> (c, fmap fn t)) nonterms)
-             (kt, ct, fmap fn tt)
-  fmap fn (IBranch0 d (k1, c1, t1)) =
-    IBranch0 d
-               (k1, c1, fmap fn t1)
-  fmap fn (IBranch1 d (k1, c1, t1) mtriple) =
-    IBranch1 d
-               (k1, c1, fmap fn t1)
-               (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
-  fmap fn (IBranch2 d (k1, c1, t1) (k2, c2, t2) nonterms mtriple) =
-    IBranch2 d
-               (k1, c1, fmap fn t1)
-               (k2, c2, fmap fn t2)
-               (Map.map (\(c, t) -> (c, fmap fn t)) nonterms)
-               (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
-
-instance (Ord k, Serialize k) => SerialFunctor (StableTree k) where
-  fmap fn (StableTree_I i) = StableTree_I $ fmap fn i
-  fmap fn (StableTree_C c) = StableTree_C $ fmap fn c
 

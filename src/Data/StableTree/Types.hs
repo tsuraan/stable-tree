@@ -19,7 +19,7 @@ module Data.StableTree.Types
 ) where
 
 -- import qualified Data.StableTree.Key as Key
-import Data.StableTree.Key      ( SomeKey(..), Key(..), Terminal, Nonterminal )
+import Data.StableTree.Key      ( StableKey, SomeKey(..), Key(..), Terminal, Nonterminal )
 
 import qualified Data.Map as Map
 import Data.Map       ( Map )
@@ -247,4 +247,35 @@ ntEquals lnts rnts =
 
 deriving instance (Ord k, Show k, Show v) => Show (StableTree k v)
 deriving instance (Ord k, Show k, Show v) => Show (Tree d c k v)
+
+instance (Ord k, StableKey k) => Functor (Tree d c k) where
+  fmap fn (Bottom (k1, v1) (k2, v2) nonterms (kt, vt)) =
+    Bottom (k1, fn v1) (k2, fn v2) (Map.map fn nonterms) (kt, fn vt)
+  fmap fn (IBottom0 mpair) =
+    IBottom0 (Prelude.fmap (\(k,v) -> (k, fn v)) mpair)
+  fmap fn (IBottom1 (k1, v1) (k2, v2) nonterms) =
+    IBottom1 (k1, fn v1) (k2, fn v2) (Map.map fn nonterms)
+  fmap fn (Branch d (k1, c1, t1) (k2, c2, t2) nonterms (kt, ct, tt)) =
+    Branch d
+             (k1, c1, fmap fn t1)
+             (k2, c2, fmap fn t2)
+             (Map.map (\(c,t) -> (c, fmap fn t)) nonterms)
+             (kt, ct, fmap fn tt)
+  fmap fn (IBranch0 d (k1, c1, t1)) =
+    IBranch0 d
+               (k1, c1, fmap fn t1)
+  fmap fn (IBranch1 d (k1, c1, t1) mtriple) =
+    IBranch1 d
+               (k1, c1, fmap fn t1)
+               (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
+  fmap fn (IBranch2 d (k1, c1, t1) (k2, c2, t2) nonterms mtriple) =
+    IBranch2 d
+               (k1, c1, fmap fn t1)
+               (k2, c2, fmap fn t2)
+               (Map.map (\(c, t) -> (c, fmap fn t)) nonterms)
+               (Prelude.fmap (\(k, c, t) -> (k, c, fmap fn t)) mtriple)
+
+instance (Ord k, StableKey k) => Functor (StableTree k) where
+  fmap fn (StableTree_I i) = StableTree_I $ fmap fn i
+  fmap fn (StableTree_C c) = StableTree_C $ fmap fn c
 

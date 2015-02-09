@@ -14,6 +14,7 @@ module Data.StableTree.Conversion
 
 import Data.StableTree.Properties ( bottomChildren, branchChildren )
 import Data.StableTree.Build      ( consume, consumeMap )
+import Data.StableTree.Key        ( StableKey )
 import Data.StableTree.Types
 
 import qualified Data.Map as Map
@@ -29,10 +30,9 @@ import Data.Text           ( Text )
 
 -- |A 'Fragment' is a user-visible part of a tree, i.e. a single node in the
 -- tree that can actually be manipulated by a user. This is useful when doing
--- the work of persisting trees, and its serialize instance is also used to
--- calculate Tree ObjectIDs. See `Data.StableTree.Conversion.toFragments` and
--- `Data.StableTree.Conversion.fromFragments` for functions to convert between
--- Fragments and Trees. see `Data.StableTree.Persist.store` and
+-- the work of persisting trees. See `Data.StableTree.Conversion.toFragments`
+-- and `Data.StableTree.Conversion.fromFragments` for functions to convert
+-- between Fragments and Trees. see `Data.StableTree.Persist.store` and
 -- `Data.StableTree.Persist.load` for functions related to storing and
 -- retrieving Fragments.
 data Fragment k v
@@ -50,12 +50,17 @@ data Fragment k v
 -- |Convert a 'StableTree' 'Tree' into a list of storable 'Fragment's. The
 -- resulting list is guaranteed to be in an order where each 'Fragment' will be
 -- seen after all its children.
-toFragments :: (Ord k, Serialize k, Serialize v)
+toFragments :: (Ord k, Serialize k, StableKey k, Serialize v)
             => StableTree k v -> [Fragment k v]
 toFragments (StableTree_I i) = snd $ toFragments' i
 toFragments (StableTree_C c) = snd $ toFragments' c
 
-toFragments' :: (Ord k, Serialize k, Serialize v)
+-- |Convert a 'Tree' into 'Fragment's. This returns a pair, where the first
+-- element is the 'Fragment' that came directly from the 'Tree', and the second
+-- element is the list of all the 'Fragment's beneath the 'Tree', and the
+-- 'Tree's fragment itself. The list is always sorted lowest to highest, so its
+-- last element is always the same entity as the first element of the pair. 
+toFragments' :: (Ord k, Serialize k, StableKey k, Serialize v)
              => Tree d c k v -> (Fragment k v, [Fragment k v])
 toFragments' b@(Bottom{})   = bottomToFragments b
 toFragments' b@(IBottom0{}) = bottomToFragments b
@@ -65,14 +70,17 @@ toFragments' b@(IBranch0{}) = branchToFragments b
 toFragments' b@(IBranch1{}) = branchToFragments b
 toFragments' b@(IBranch2{}) = branchToFragments b
 
-bottomToFragments :: (Ord k, Serialize k, Serialize v)
+-- |Make a Bottom element into a FragmentBottom. Always returns
+-- (fragment, [fragment])
+bottomToFragments :: (Ord k, Serialize k, StableKey k, Serialize v)
                   => Tree Z c k v -> (Fragment k v, [Fragment k v])
 bottomToFragments tree =
   let children = bottomChildren tree
       frag     = fixFragmentID $ FragmentBottom undefined children
   in (frag, [frag])
 
-branchToFragments :: (Ord k, Serialize k, Serialize v)
+-- |Make a Branch into a bunch of Fragments
+branchToFragments :: (Ord k, Serialize k, StableKey k, Serialize v)
                   => Tree (S d) c k v -> (Fragment k v, [Fragment k v])
 branchToFragments tree =
   let (completes, mInc) = branchChildren tree
@@ -94,7 +102,7 @@ branchToFragments tree =
 -- the caller's responsibility to load all the child fragments into a map
 -- (probably involving finding children using the fragmentChildren field of the
 -- Fragment type).
-fromFragments :: (Ord k, Serialize k, Serialize v)
+fromFragments :: (Ord k, Serialize k, StableKey k, Serialize v)
               => Map ObjectID (Fragment k v)
               -> Fragment k v
               -> Either Text (StableTree k v)
@@ -131,7 +139,7 @@ fragsToMap loaded = go Map.empty
 -- The resulting Trees non-overlapping and ordered such that each Tree's
 -- highest key is lower than the next Tree's lowest key, but illegal Fragments
 -- could break that.
-fragsToBottoms :: (Ord k, Serialize k, Serialize v)
+fragsToBottoms :: (Ord k, Serialize k, StableKey k, Serialize v)
                => Map ObjectID (Fragment k v)
                -> Fragment k v
                -> Either Text ( [Tree Z Complete k v]
@@ -200,6 +208,13 @@ instance (Ord k, Serialize k, Serialize v) => Serialize (Fragment k v) where
       v <- get
       return (k,v)
 
+-- |Calculate the 'Fragment's 'ObjectID', and patch it into place. This is
+-- generally used to create a 'Fragment', like so:
+--
+-- @
+-- fixFragmentID $ FragmentBottom undefined foo
+-- fixFragmentID $ FragmentBranch undefined foo bar
+-- @
 fixFragmentID :: (Ord k, Serialize k, Serialize v)
               => Fragment k v -> Fragment k v
 fixFragmentID frag@(FragmentBottom _ children) =

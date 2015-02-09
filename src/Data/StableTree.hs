@@ -25,14 +25,13 @@ module Data.StableTree
 , keys
 , elems
 , assocs
-, fmap
 , append
 , concat
 , toMap
 ) where
 
 import Data.StableTree.Build      ( fromMap, empty, append, concat )
-import Data.StableTree.Mutate     ( insert, delete, fmap )
+import Data.StableTree.Mutate     ( insert, delete )
 import Data.StableTree.Properties ( toMap, size, lookup, keys, elems, assocs )
 import Data.StableTree.Types      ( StableTree )
 
