@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving  #-}
 -- |A small demo program to demonstrate how stable trees behave compared with
 -- how one might naively implement versioned trees in a relational database.
 -- More detailed explanation of the naive storage is in the stupidCount
@@ -7,20 +8,28 @@ module Main
 ) where
 
 import Data.StableTree
-import Data.StableTree.Persist
+import Data.StableTree.Store
 
 import qualified Data.Map as Map
+import Control.Applicative        ( Applicative )
 import Control.Monad              ( foldM )
-import Control.Monad.State.Strict ( State, runState, modify )
+import Control.Monad.State.Strict ( MonadState, State, runState, modify )
+import Control.Monad.Except       ( MonadError, ExceptT(..), runExceptT, throwError )
 import Data.Map                   ( Map )
-import Data.ObjectID              ( ObjectID )
-import Data.Text                  ( Text )
+import Data.ObjectID              ( ObjectID, calculateSerialize )
 
-type S = Map ObjectID (Fragment Int Int)
+type S = Map ObjectID (Fragment ObjectID Int Int)
 
-data DemoError = ApiError Text
-instance Error DemoError where
-  stableTreeError = ApiError
+data DemoError = ApiError String
+newtype StableTreeState a = STS {
+  fromSTS :: ExceptT DemoError (State S) a
+  }
+  deriving ( Applicative, Functor, Monad, MonadError DemoError, MonadState S )
+
+instance StoreError StableTreeState where
+  serializeError e = throwError $ ApiError e
+  reconstitutionError e = throwError $ ApiError e
+
 
 -- |Make a ton of related maps, storing all of them in a RAM store and printing
 -- out the total number of unique entries in that store and how many database
@@ -47,11 +56,16 @@ main = do
   upd :: S -> [Int] -> S
   upd m is =
     let t = fromMap $ Map.fromList [(a,a+1) | a <- is]
-        (_,m') = runState (save t) m
+        (_,m') = runState (runExceptT (fromSTS (save t))) m
     in m'
 
-  save :: StableTree Int Int -> State S (Either DemoError ObjectID)
-  save = store' (\oid frag -> modify (Map.insert oid frag) >> return Nothing)
+  save :: StableTree Int Int -> StableTreeState ObjectID
+  save = store' writer
+
+  writer frag = do
+    let oid = calculateSerialize frag
+    modify (Map.insert oid frag)
+    return oid
 
   prTrees m = do
     putStrLn $ (show $ Map.size m) ++ " unique entries"

@@ -1,32 +1,32 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, GeneralizedNewtypeDeriving  #-}
 module Main
 ( main
 ) where
 
 import qualified Data.StableTree as ST
-import qualified Data.StableTree.Persist as SP
+import qualified Data.StableTree.Store as SS
 import Data.StableTree ( StableTree )
-import Data.StableTree.Persist ( Fragment(..), Error(..) )
+import Data.StableTree.Store ( Fragment(..), StoreError(..) )
 import Data.StableTree.Key     ( StableKey )
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Arrow              ( first )
-import Control.Applicative        ( (<$>) )
-import Control.Monad.State.Strict ( State, runState, modify, gets )
+import Control.Applicative        ( Applicative, (<$>) )
+import Control.Monad.State.Strict ( MonadState, State, runState, modify, gets )
+import Control.Monad.Except       ( MonadError, ExceptT(..), runExceptT, throwError )
 import Data.ByteString            ( ByteString )
 import Data.ByteString.Arbitrary  ( ArbByteString(..) )
 import Data.Map                   ( Map )
-import Data.ObjectID              ( ObjectID )
+import Data.ObjectID              ( ObjectID, calculateByteString )
 import Data.Serialize             ( Serialize, encode, decode )
-import Data.Text                  ( Text )
 import Test.Tasty
 import Test.Tasty.QuickCheck      ( Arbitrary, testProperty, oneof, arbitrary )
 import Test.QuickCheck            ( Gen, elements )
 
 -- import Debug.Trace ( trace )
--- trace :: a -> b -> b
--- trace _ b = b
+trace :: a -> b -> b
+trace = flip const
 
 main :: IO ()
 main = defaultMain $
@@ -150,40 +150,49 @@ main = defaultMain $
 
   action :: (Eq k, Ord k, Serialize k, StableKey k, Eq v, Serialize v)
          => [(k,v)] -> Bool
-  action pairs = fst $ runState go Map.empty
+  action pairs =
+    case runState (runExceptT (fromSTS go)) Map.empty of
+      (Right bool, _) -> bool
+      (Left err, _) -> trace err False
     where
     go = do
       let m  = Map.fromList pairs
           st = ST.fromMap m
-      Right tid <- SP.store' store st
-      Right st' <- SP.load' load tid
+      tid <- SS.store' store st
+      st' <- SS.load' load tid
       return $ m == ST.toMap st'
 
--- |Error type for RAM storage. Not a lot can go wrong in RAM...
 data RamError = NotFound ObjectID
               | SerializationError String
-              | ApiError Text
+              | ApiError String
               deriving ( Show )
 
-instance Error RamError where
-  stableTreeError = ApiError
+type S = Map ByteString ByteString
+newtype StableTreeState a = STS {
+  fromSTS :: ExceptT RamError (State S) a
+  }
+  deriving ( Applicative, Functor, Monad, MonadError RamError, MonadState S )
 
-type StableTreeState = State (Map ByteString ByteString)
+instance SS.StoreError StableTreeState where
+  serializeError e = throwError $ ApiError e
+  reconstitutionError e = throwError $ ApiError e
 
 store :: (Ord k, Serialize k, StableKey k, Serialize v)
-      => ObjectID -> Fragment k v -> StableTreeState (Maybe RamError)
-store oid frag = do
-  modify $ Map.insert (encode oid) (encode frag)
-  return Nothing
+      => Fragment ObjectID k v -> StableTreeState ObjectID
+store frag = do
+  let frag' = encode frag
+      oid   = calculateByteString frag'
+  modify $ Map.insert (encode oid) frag'
+  return oid
 
 load :: (Ord k, Serialize k, StableKey k, Serialize v)
-     => ObjectID -> StableTreeState (Either RamError (Fragment k v))
+     => ObjectID -> StableTreeState (Fragment ObjectID k v)
 load oid =
   gets (Map.lookup $ encode oid) >>= \case
-    Nothing -> return $ Left $ NotFound oid
+    Nothing -> throwError $ NotFound oid
     Just fragBS ->
       case decode fragBS of
-        Left err -> return $ Left $ SerializationError err
-        Right frag -> return $ Right frag
+        Left err -> throwError $ SerializationError err
+        Right frag -> return frag
 
 
