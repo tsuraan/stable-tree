@@ -89,59 +89,6 @@ store' fn tree = fst <$> store fn' a0 tree
 
   a0 = undefined
 
-storeTree :: (StoreError m, Ord k)
-          => (a -> Fragment t k v -> m (t, a))
-          -> a
-          -> Tree d c k v
-          -> m (t, a)
-storeTree fn a0 b@(Bottom{})   = storeBottom fn a0 b
-storeTree fn a0 b@(IBottom0{}) = storeBottom fn a0 b
-storeTree fn a0 b@(IBottom1{}) = storeBottom fn a0 b
-storeTree fn a0 b@(Branch{})   = storeBranch fn a0 b
-storeTree fn a0 b@(IBranch0{}) = storeBranch fn a0 b
-storeTree fn a0 b@(IBranch1{}) = storeBranch fn a0 b
-storeTree fn a0 b@(IBranch2{}) = storeBranch fn a0 b
-
-storeBottom :: (StoreError m, Ord k)
-            => (a -> Fragment t k v -> m (t, a))
-            -> a
-            -> Tree Z c k v
-            -> m (t, a)
-storeBottom fn a0 bottom =
-  let children = bottomChildren bottom
-      frag     = FragmentBottom children
-  in fn a0 frag
-
-storeBranch :: (StoreError m, Ord k)
-            => (a -> Fragment t k v -> m (t, a))
-            -> a
-            -> Tree (S d) c k v
-            -> m (t, a)
-storeBranch fn a0 branch =
-  let (comps, incomp) = branchChildren branch
-      comps'          = [ (k, (vc, StableTree_C t))
-                        | (k, (vc, t)) <- Map.toList comps]
-      incomp'         = case incomp of
-                          Nothing -> []
-                          Just (k, vc, t) -> [(k, (vc, StableTree_I t))]
-  in storeChildren fn a0 (getDepth branch) Map.empty (comps' ++ incomp')
-
-storeChildren :: (StoreError m, Ord k)
-              => (a -> Fragment t k v -> m (t, a))
-              -> a
-              -> Depth
-              -> Map k (ValueCount, t)
-              -> [(k, (ValueCount, StableTree k v))]
-              -> m (t, a)
-storeChildren _ _ _ _ [] =
-  serializeError "Branch must have children!"
-storeChildren fn a0 d ch [(k, (vc, t))] = do
-  (tag, accum) <- store fn a0 t
-  fn accum $ FragmentBranch d (Map.insert k (vc, tag) ch)
-storeChildren fn a0 d ch ((k, (vc, t)):rest) = do
-  (tag, accum) <- store fn a0 t
-  storeChildren fn accum d (Map.insert k (vc, tag) ch) rest
-
 -- |Reverse of 'store'. As with 'store', this acts like a fold, but converts an
 -- tag into a tree, rather than storing a tree. This will always build the tree
 -- from the top down.
@@ -167,6 +114,75 @@ load' fn tag = fst <$> load fn' a0 tag
     return (frag, accum)
 
   a0 = undefined
+
+-- |Do the work of storing a real 'Tree', unwrapped from inside a 'StableTree'.
+storeTree :: (StoreError m, Ord k)
+          => (a -> Fragment t k v -> m (t, a))
+          -> a
+          -> Tree d c k v
+          -> m (t, a)
+storeTree fn a0 b@(Bottom{})   = storeBottom fn a0 b
+storeTree fn a0 b@(IBottom0{}) = storeBottom fn a0 b
+storeTree fn a0 b@(IBottom1{}) = storeBottom fn a0 b
+storeTree fn a0 b@(Branch{})   = storeBranch fn a0 b
+storeTree fn a0 b@(IBranch0{}) = storeBranch fn a0 b
+storeTree fn a0 b@(IBranch1{}) = storeBranch fn a0 b
+storeTree fn a0 b@(IBranch2{}) = storeBranch fn a0 b
+
+-- |Store a 'Bottom', which is to say a raw key/value map. Simple matter of
+-- creating the Fragment and passing it to the user's storage function.
+storeBottom :: (StoreError m, Ord k)
+            => (a -> Fragment t k v -> m (t, a))
+            -> a
+            -> Tree Z c k v
+            -> m (t, a)
+storeBottom fn a0 bottom =
+  let children = bottomChildren bottom
+      frag     = FragmentBottom children
+  in fn a0 frag
+
+-- |Store a 'Branch'. Since a 'Fragment' maps keys to tags instead of keys to
+-- lower branches, we need to get the tags. So, we'll recurse on the children,
+-- building up a new mapping from keys to tags, and then build and store the
+-- Fragment that tracks that information.
+storeBranch :: (StoreError m, Ord k)
+            => (a -> Fragment t k v -> m (t, a))
+            -> a
+            -> Tree (S d) c k v
+            -> m (t, a)
+storeBranch fn a0 branch =
+  let (comps, incomp) = branchChildren branch
+      comps'          = [ (k, (vc, StableTree_C t))
+                        | (k, (vc, t)) <- Map.toList comps]
+      incomp'         = case incomp of
+                          Nothing -> []
+                          Just (k, vc, t) -> [(k, (vc, StableTree_I t))]
+  in storeChildren fn a0 (getDepth branch) Map.empty (comps' ++ incomp')
+
+-- |Store the children of a branch. This is basically just a helper function
+-- that works with a list of children instead of a map, but it's a convenient
+-- representation.
+-- NB the terminal case is a singleton child list, so we can always treat an
+-- empty list as an error (shouldn't be possible, but not forbidden by types
+-- either).
+storeChildren :: (StoreError m, Ord k)
+              => (a -> Fragment t k v -> m (t, a))
+              -> a
+              -> Depth
+              -> Map k (ValueCount, t)
+              -> [(k, (ValueCount, StableTree k v))]
+              -> m (t, a)
+storeChildren _ _ _ _ [] =
+  serializeError "Branch must have children!"
+storeChildren fn a0 d ch [(k, (vc, t))] = do
+  -- This is the last child that was in the branch, so store it and then build
+  -- the branch's fragment and store that too.
+  (tag, accum) <- store fn a0 t
+  fn accum $ FragmentBranch d (Map.insert k (vc, tag) ch)
+storeChildren fn a0 d ch ((k, (vc, t)):rest) = do
+  -- Store the child, record its tag, and then store the rest of the children
+  (tag, accum) <- store fn a0 t
+  storeChildren fn accum d (Map.insert k (vc, tag) ch) rest
 
 growBottoms :: (StoreError m, Ord k, StableKey k)
             => [Tree Z Complete k v]
